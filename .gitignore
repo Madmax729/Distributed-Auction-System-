@@ -1,0 +1,73 @@
+# ============================================================
+# .gitignore — Distributed Auction System
+# ============================================================
+
+# ── Environment & Secrets ────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Node.js ──────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+.pnpm-store/
+
+# ── Build Outputs ────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ── Frontend (Vite / React) ───────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+
+# ── Backend ──────────────────────────────────────────────────
+backend/node_modules/
+backend/dist/
+backend/uploads/
+backend/.env
+backend/.env.*
+
+# ── Docker ───────────────────────────────────────────────────
+# (docker-compose.yml IS committed — only ignore local overrides)
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+# ── Logs ─────────────────────────────────────────────────────
+logs/
+*.log
+*.log.*
+pids/
+*.pid
+*.seed
+
+# ── OS & Editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── k6 Load Testing Results ──────────────────────────────────
+k6/results/
+k6/*.json
+k6/*.csv
+
+# ── Misc ─────────────────────────────────────────────────────
+.cache/
+.tmp/
+tmp/
+coverage/
+.nyc_output/

@@ -1,0 +1,163 @@
+# ============================================================
+# DISTRIBUTED ONLINE AUCTION SYSTEM — Docker Compose
+# ============================================================
+#
+# Architecture:
+#   MongoDB Atlas (cloud) ← shared database for ALL servers
+#   Docker              ← simulates 4 independent servers on 1 machine
+#
+# Services:
+#   server1 (S1, port 3001) — Auction backend node
+#   server2 (S2, port 3002) — Auction backend node
+#   server3 (S3, port 3003) — Auction backend node
+#   server4 (S4, port 3004) — Auction backend node
+#   nginx   (port 80)       — Load balancer / reverse proxy
+#
+# Leader Election: Bully Algorithm (runs at startup + on failure)
+#   - All 4 servers start equal (IS_LEADER=false).
+#   - Each runs a staggered startup election.
+#   - Server with highest alive SERVER_ID always wins.
+#   - S4 wins at startup; if S4 dies, S3 wins; and so on.
+#   - Servers talk to each other via POST /api/internal/leader-election.
+#
+# MONGO_URI is loaded from root .env (avoids YAML special-char issues).
+#
+# To start:  docker compose up --build
+# To stop:   docker compose down
+# ============================================================
+
+version: '3.8'
+
+networks:
+  auction-network:
+    driver: bridge
+
+volumes:
+  uploads-data:
+
+services:
+
+  # ─── Backend Server 1 (S1) — Lowest ID ────────────────────────────────────
+  server1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: auction-server1
+    restart: unless-stopped
+    env_file:
+      - .env            # ← loads MONGO_URI from root .env (safe, no YAML parsing)
+    environment:
+      SERVER_ID: "1"
+      PORT: "3001"
+      IS_LEADER: "false"
+      PEER_SERVERS: "http://server2:3002,http://server3:3003,http://server4:3004"
+    ports:
+      - "3001:3001"
+    volumes:
+      - uploads-data:/app/uploads
+    networks:
+      - auction-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 25s
+
+  # ─── Backend Server 2 (S2) ────────────────────────────────────────────────
+  server2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: auction-server2
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVER_ID: "2"
+      PORT: "3002"
+      IS_LEADER: "false"
+      PEER_SERVERS: "http://server1:3001,http://server3:3003,http://server4:3004"
+    ports:
+      - "3002:3002"
+    volumes:
+      - uploads-data:/app/uploads
+    networks:
+      - auction-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 25s
+
+  # ─── Backend Server 3 (S3) ────────────────────────────────────────────────
+  server3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: auction-server3
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVER_ID: "3"
+      PORT: "3003"
+      IS_LEADER: "false"
+      PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server4:3004"
+    ports:
+      - "3003:3003"
+    volumes:
+      - uploads-data:/app/uploads
+    networks:
+      - auction-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 25s
+
+  # ─── Backend Server 4 (S4) — Highest ID = wins Bully election ─────────────
+  server4:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: auction-server4
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVER_ID: "4"
+      PORT: "3004"
+      IS_LEADER: "false"
+      PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server3:3003"
+    ports:
+      - "3004:3004"
+    volumes:
+      - uploads-data:/app/uploads
+    networks:
+      - auction-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 25s
+
+  # ─── NGINX Load Balancer ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: auction-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - auction-network
+    depends_on:
+      - server1
+      - server2
+      - server3
+      - server4
