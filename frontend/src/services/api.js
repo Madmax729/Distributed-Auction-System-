@@ -3,32 +3,31 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 12000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Add user ID to all requests (from localStorage)
+// Attach userId to all requests
 api.interceptors.request.use((config) => {
   const userId = localStorage.getItem('userId');
-  if (userId) {
-    config.headers['x-user-id'] = userId;
-  }
+  if (userId) config.headers['x-user-id'] = userId;
   return config;
 });
 
 // ─── Auction APIs ─────────────────────────────────────────────
 export const auctionAPI = {
-  getAll: () => api.get('/auctions'),
-  getById: (id) => api.get(`/auctions/${id}`),
-  create: (data) => api.post('/auctions', data),
-  join: (id, data) => api.post(`/auctions/${id}/join`, data),
-  end: (id) => api.post(`/auctions/${id}/end`),
+  getAll:   (params = {}) => api.get('/auctions', { params }),
+  getById:  (id) => api.get(`/auctions/${id}`),
+  create:   (data) => api.post('/auctions', data),
+  join:     (id, data) => api.post(`/auctions/${id}/join`, data),
+  end:      (id) => api.post(`/auctions/${id}/end`),
+  getStats: (id) => api.get(`/auctions/${id}/stats`),
 };
 
 // ─── Bid APIs ─────────────────────────────────────────────────
 export const bidAPI = {
-  place: (data) => api.post('/bids', data),
-  getByAuction: (auctionId) => api.get(`/bids/${auctionId}`),
+  place:       (data) => api.post('/bids', data),
+  getByAuction:(auctionId) => api.get(`/bids/${auctionId}`),
 };
 
 // ─── Upload API ───────────────────────────────────────────────
@@ -44,15 +43,15 @@ export const uploadAPI = {
 
 // ─── Load Test API ────────────────────────────────────────────
 export const loadTestAPI = {
-  start: (data) => api.post('/start-load-test', data),
-  stop: () => api.post('/stop-load-test'),
+  start:  (data) => api.post('/start-load-test', data),
+  stop:   () => api.post('/stop-load-test'),
   status: () => api.get('/load-test-status'),
 };
 
 // ─── Server Info API ──────────────────────────────────────────
 export const serverAPI = {
   getInfo: () => api.get('/server-info'),
-  health: () => axios.get('/health'),
+  health:  () => axios.get('/health'),
 };
 
 export default api;

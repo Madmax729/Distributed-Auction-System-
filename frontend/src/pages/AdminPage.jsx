@@ -4,66 +4,57 @@ import { getSocket } from '../services/socket';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
-const SERVER_PORTS = [3001, 3002, 3003, 3004];
 const SERVER_IDS = [1, 2, 3, 4];
 
 export default function AdminPage() {
-  const [serverStatuses, setServerStatuses] = useState({});
-  const [loadTestConfig, setLoadTestConfig] = useState({ vus: 10, duration: '30s', auctionId: '' });
+  const [serverStatuses,  setServerStatuses]  = useState({});
+  const [loadTestConfig,  setLoadTestConfig]  = useState({ vus: 10, duration: '30s', auctionId: '' });
   const [loadTestRunning, setLoadTestRunning] = useState(false);
-  const [loadTestOutput, setLoadTestOutput] = useState([]);
-  const [systemInfo, setSystemInfo] = useState(null);
-  const [leaderLog, setLeaderLog] = useState([]);
+  const [loadTestOutput,  setLoadTestOutput]  = useState([]);
+  const [systemInfo,      setSystemInfo]      = useState(null);
+  const [leaderLog,       setLeaderLog]       = useState([]);
 
   useEffect(() => {
     fetchServerStatuses();
     const interval = setInterval(fetchServerStatuses, 5000);
-
-    // Listen for distributed system events
     const socket = getSocket();
 
     socket.on('leader-changed', (data) => {
-      const entry = {
+      setLeaderLog(prev => [{
         time: new Date().toLocaleTimeString(),
-        message: `👑 Leader changed to Server ${data.newLeader}`,
+        message: `Leader changed to Server ${data.newLeader}`,
         type: 'leader',
-      };
-      setLeaderLog(prev => [entry, ...prev].slice(0, 50));
-      toast(`👑 New Leader: Server ${data.newLeader}`, { duration: 5000 });
+      }, ...prev].slice(0, 50));
+      toast(`New Leader: Server ${data.newLeader}`, { duration: 5000 });
     });
 
     socket.on('server-event', (data) => {
-      const entry = {
+      setLeaderLog(prev => [{
         time: new Date().toLocaleTimeString(),
         message: data.message,
         type: data.type?.toLowerCase() || 'info',
-      };
-      setLeaderLog(prev => [entry, ...prev].slice(0, 50));
+      }, ...prev].slice(0, 50));
     });
 
     socket.on('server-status', (data) => {
       setServerStatuses(prev => ({
         ...prev,
         ...Object.fromEntries(
-          Object.entries(data.peers).map(([id, status]) => [
-            id,
-            { ...status, serverId: id },
-          ])
+          Object.entries(data.peers).map(([id, status]) => [id, { ...status, serverId: id }])
         ),
       }));
     });
 
     socket.on('load-test-output', (data) => {
       setLoadTestOutput(prev => [...prev.slice(-100), {
-        text: data.text.trim(),
-        type: data.type,
+        text: data.text.trim(), type: data.type,
         time: new Date().toLocaleTimeString(),
       }]);
     });
 
     socket.on('load-test-complete', (data) => {
       setLoadTestRunning(false);
-      toast.success(`✅ Load test complete (exit code: ${data.code})`);
+      toast.success(`Load test complete (exit code: ${data.code})`);
     });
 
     return () => {
@@ -78,49 +69,34 @@ export default function AdminPage() {
 
   const fetchServerStatuses = async () => {
     const statuses = {};
-
     await Promise.allSettled(
       SERVER_IDS.map(async (id) => {
         try {
-          // Direct health check to each server
-          const port = 3000 + id;
-          const res = await axios.get(`/health`, {
-            timeout: 2000,
-            headers: { 'x-target-server': id },
-          });
+          const res = await axios.get('/health', { timeout: 2000, headers: { 'x-target-server': id } });
           statuses[id] = { online: true, ...res.data };
         } catch {
           statuses[id] = { online: false, serverId: id };
         }
       })
     );
-
-    // Also get info from the current server
     try {
       const res = await serverAPI.getInfo();
       setSystemInfo(res.data);
-      const serverId = parseInt(res.data.serverId);
-      statuses[serverId] = { online: true, ...res.data };
+      statuses[parseInt(res.data.serverId)] = { online: true, ...res.data };
     } catch {}
-
     setServerStatuses(statuses);
   };
 
   const startLoadTest = async () => {
-    if (!loadTestConfig.auctionId.trim()) {
-      toast.error('Please enter an Auction ID first');
-      return;
-    }
-
+    if (!loadTestConfig.auctionId.trim()) { toast.error('Please enter an Auction ID'); return; }
     try {
       setLoadTestRunning(true);
       setLoadTestOutput([]);
       await loadTestAPI.start(loadTestConfig);
-      toast.success(`🚀 Load test started: ${loadTestConfig.vus} VUs × ${loadTestConfig.duration}`);
+      toast.success(`Load test started: ${loadTestConfig.vus} VUs × ${loadTestConfig.duration}`);
     } catch (err) {
       setLoadTestRunning(false);
-      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to start load test';
-      toast.error(msg);
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Failed to start load test');
     }
   };
 
@@ -128,179 +104,91 @@ export default function AdminPage() {
     try {
       await loadTestAPI.stop();
       setLoadTestRunning(false);
-      toast('⏹ Load test stopped', { icon: '🛑' });
-    } catch (err) {
-      toast.error('Failed to stop load test');
-    }
-  };
-
-  const ServerCard = ({ serverId }) => {
-    const status = serverStatuses[serverId] || { online: false, serverId };
-    const isLeader = status.isLeader || (systemInfo?.currentLeader == serverId);
-    const isOnline = status.online !== false;
-
-    return (
-      <div style={{
-        padding: '20px 22px',
-        borderRadius: 14,
-        background: isOnline
-          ? isLeader
-            ? 'rgba(255, 215, 0, 0.06)'
-            : 'rgba(79, 172, 254, 0.06)'
-          : 'rgba(255, 101, 132, 0.06)',
-        border: `1px solid ${
-          !isOnline ? 'rgba(255, 101, 132, 0.25)'
-          : isLeader ? 'rgba(255, 215, 0, 0.3)'
-          : 'rgba(79, 172, 254, 0.2)'
-        }`,
-        transition: 'all 0.3s ease',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        {/* Animated glow for leader */}
-        {isLeader && isOnline && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'radial-gradient(circle at 50% 0%, rgba(255,215,0,0.08), transparent 70%)',
-            pointerEvents: 'none',
-          }} />
-        )}
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 10,
-              background: isOnline
-                ? isLeader ? 'linear-gradient(135deg, #ffd700, #f97316)' : 'linear-gradient(135deg, #4facfe, #6c63ff)'
-                : 'rgba(255, 101, 132, 0.3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, fontWeight: 800, color: 'white',
-              boxShadow: isLeader ? '0 0 15px rgba(255,215,0,0.4)' : 'none',
-            }}>
-              {isLeader ? '👑' : `S${serverId}`}
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Server {serverId}</div>
-              <div style={{ fontSize: 11, color: 'rgba(240,240,255,0.4)' }}>Port 300{serverId}</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: isOnline ? (isLeader ? '#ffd700' : '#00e5a0') : '#ff6584',
-              boxShadow: isOnline ? `0 0 8px ${isLeader ? '#ffd700' : '#00e5a0'}` : 'none',
-              animation: isOnline ? 'pulse 2s ease-in-out infinite' : 'none',
-            }} />
-            <span style={{
-              fontSize: 11, fontWeight: 600,
-              color: isOnline ? (isLeader ? '#ffd700' : '#00e5a0') : '#ff6584',
-            }}>
-              {isOnline ? (isLeader ? 'LEADER' : 'FOLLOWER') : 'OFFLINE'}
-            </span>
-          </div>
-        </div>
-
-        {isOnline && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <InfoRow label="Uptime" value={status.uptime ? `${Math.floor(status.uptime)}s` : 'N/A'} />
-            <InfoRow label="Lamport Clock" value={status.lamportClock ?? 'N/A'} />
-            <InfoRow label="Current Leader" value={status.currentLeader ? `S${status.currentLeader}` : '?'} />
-          </div>
-        )}
-
-        {!isOnline && (
-          <div style={{ fontSize: 13, color: 'rgba(255, 101, 132, 0.7)', textAlign: 'center', padding: '8px 0' }}>
-            🔴 Server unreachable
-          </div>
-        )}
-      </div>
-    );
+      toast('Load test stopped', { icon: '⏹' });
+    } catch { toast.error('Failed to stop load test'); }
   };
 
   return (
-    <div className="container" style={{ paddingTop: 40, paddingBottom: 80 }}>
+    <div className="container" style={{ paddingTop: 44, paddingBottom: 96 }}>
+
       {/* Header */}
-      <div style={{ marginBottom: 40, animation: 'fadeIn 0.5s ease' }}>
+      <div style={{ marginBottom: 36, animation: 'fadeIn 0.4s ease' }}>
         <h1 style={{
-          fontSize: 36, fontFamily: 'Space Grotesk, sans-serif',
-          fontWeight: 800, marginBottom: 8,
+          fontSize: 24, fontFamily: 'Space Grotesk, sans-serif',
+          fontWeight: 700, marginBottom: 6, color: 'var(--text-1)',
+          letterSpacing: '-0.5px',
         }}>
-          ⚙️ System <span style={{
-            background: 'linear-gradient(135deg, #6c63ff, #4facfe)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>Admin</span>
+          System <span className="text-gradient">Admin</span>
         </h1>
-        <p style={{ color: 'rgba(240,240,255,0.4)', fontSize: 14 }}>
-          Monitor server health, trigger load tests, and observe distributed system behavior
+        <p style={{ color: 'var(--text-3)', fontSize: 13 }}>
+          Monitor server health, trigger load tests, and observe distributed system behavior.
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24, alignItems: 'start' }}>
-        {/* Left */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Server Status Grid */}
-          <div className="glass-card" style={{ padding: 28 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700 }}>
-                🖥️ Server Nodes
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignItems: 'start' }}>
+
+        {/* ── Left ─────────────────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Server Grid */}
+          <div className="glass-card" style={{ padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, color: 'var(--text-1)' }}>
+                Server Nodes
               </h2>
               <button className="btn btn-ghost btn-sm" onClick={fetchServerStatuses}>
-                🔄 Refresh
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                </svg>
+                Refresh
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
               {SERVER_IDS.map(id => (
-                <ServerCard key={id} serverId={id} />
+                <ServerCard
+                  key={id}
+                  serverId={id}
+                  status={serverStatuses[id]}
+                  systemInfo={systemInfo}
+                />
               ))}
             </div>
 
-            {/* Architecture Info */}
             <div style={{
-              marginTop: 20, padding: '14px 16px',
-              background: 'rgba(108, 99, 255, 0.06)',
-              border: '1px solid rgba(108, 99, 255, 0.15)',
-              borderRadius: 10, fontSize: 12,
-              color: 'rgba(240,240,255,0.5)', lineHeight: 1.7,
+              marginTop: 18, padding: '12px 14px',
+              background: 'var(--accent-dim)',
+              border: '1px solid var(--accent-border)',
+              borderRadius: 8, fontSize: 12,
+              color: 'var(--text-2)', lineHeight: 1.7,
             }}>
-              <strong style={{ color: 'rgba(240,240,255,0.8)' }}>🧠 Distributed System:</strong>
-              Leader handles all writes → replicates to followers via /replicate-bid →
-              Socket.io broadcasts to all clients → Bully election on leader failure.
-              Stop a Docker container to simulate failure!
+              <strong style={{ color: 'var(--accent-light)' }}>Distributed System:</strong>{' '}
+              Leader handles all writes → replicates to followers → Socket.io broadcasts to clients → Bully election on failure.
+              Stop a Docker container to simulate failure.
             </div>
           </div>
 
           {/* Event Log */}
-          <div className="glass-card" style={{ padding: 28 }}>
-            <h2 style={{ fontSize: 18, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 20 }}>
-              📋 System Event Log
+          <div className="glass-card" style={{ padding: 24 }}>
+            <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 16, color: 'var(--text-1)' }}>
+              System Event Log
             </h2>
 
-            <div style={{
-              maxHeight: 280, overflowY: 'auto',
-              display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
+            <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {leaderLog.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(240,240,255,0.3)', fontSize: 13 }}>
-                  No events yet. System events will appear here in real time.
+                <div style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-3)', fontSize: 13 }}>
+                  No events yet. Events will appear here in real time.
                 </div>
               ) : (
                 leaderLog.map((entry, i) => (
                   <div key={i} style={{
-                    padding: '8px 12px', borderRadius: 8,
-                    background: entry.type === 'leader' ? 'rgba(255,215,0,0.06)'
-                      : entry.type === 'leader_failure' ? 'rgba(255,101,132,0.06)'
-                      : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${
-                      entry.type === 'leader' ? 'rgba(255,215,0,0.2)'
-                      : entry.type === 'leader_failure' ? 'rgba(255,101,132,0.2)'
-                      : 'rgba(255,255,255,0.05)'
-                    }`,
-                    fontSize: 12, color: 'rgba(240,240,255,0.7)',
-                    animation: 'slideIn 0.3s ease',
+                    padding: '7px 11px', borderRadius: 6,
+                    background: entry.type === 'leader' ? 'var(--amber-dim)' : 'var(--bg-raised)',
+                    border: `1px solid ${entry.type === 'leader' ? 'rgba(245,158,11,0.18)' : 'var(--border)'}`,
+                    fontSize: 12, color: 'var(--text-2)',
+                    animation: 'slideIn 0.25s ease',
                   }}>
-                    <span style={{ color: 'rgba(240,240,255,0.3)', marginRight: 8 }}>{entry.time}</span>
+                    <span style={{ color: 'var(--text-3)', marginRight: 8, fontSize: 11 }}>{entry.time}</span>
                     {entry.message}
                   </div>
                 ))
@@ -309,18 +197,17 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Right — Load Test Panel */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div className="glass-card" style={{ padding: 28 }}>
-            <h2 style={{ fontSize: 18, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 6 }}>
-              🚀 k6 Load Test
+        {/* ── Right — Load Test ─────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="glass-card" style={{ padding: 22 }}>
+            <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 4, color: 'var(--text-1)' }}>
+              k6 Load Test
             </h2>
-            <p style={{ fontSize: 13, color: 'rgba(240,240,255,0.4)', marginBottom: 24, lineHeight: 1.6 }}>
-              Simulate concurrent users bidding to stress test the distributed system.
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20, lineHeight: 1.6 }}>
+              Simulate concurrent bidders to stress test the system.
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Auction ID */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group">
                 <label className="form-label">Target Auction ID</label>
                 <input
@@ -334,7 +221,6 @@ export default function AdminPage() {
                 />
               </div>
 
-              {/* VUs */}
               <div className="form-group">
                 <label className="form-label">Virtual Users (VUs)</label>
                 <input
@@ -345,8 +231,9 @@ export default function AdminPage() {
                   value={loadTestConfig.vus}
                   onChange={(e) => setLoadTestConfig(prev => ({ ...prev, vus: parseInt(e.target.value) || 10 }))}
                   disabled={loadTestRunning}
+                  style={{ marginBottom: 7 }}
                 />
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 5 }}>
                   {[10, 25, 50, 100].map(v => (
                     <button
                       key={v}
@@ -361,7 +248,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Duration */}
               <div className="form-group">
                 <label className="form-label">Duration</label>
                 <input
@@ -372,8 +258,9 @@ export default function AdminPage() {
                   value={loadTestConfig.duration}
                   onChange={(e) => setLoadTestConfig(prev => ({ ...prev, duration: e.target.value }))}
                   disabled={loadTestRunning}
+                  style={{ marginBottom: 7 }}
                 />
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 5 }}>
                   {['15s', '30s', '1m', '5m'].map(d => (
                     <button
                       key={d}
@@ -388,7 +275,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Control Buttons */}
               {!loadTestRunning ? (
                 <button
                   id="start-load-test-btn"
@@ -396,23 +282,19 @@ export default function AdminPage() {
                   onClick={startLoadTest}
                   style={{ width: '100%', justifyContent: 'center' }}
                 >
-                  🚀 Start Load Test
+                  Start Load Test
                 </button>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '12px 16px', borderRadius: 10,
-                    background: 'rgba(0, 229, 160, 0.08)',
-                    border: '1px solid rgba(0, 229, 160, 0.2)',
+                    padding: '10px 14px', borderRadius: 8,
+                    background: 'var(--green-dim)',
+                    border: '1px solid var(--green-border)',
                   }}>
-                    <div style={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: '#00e5a0',
-                      animation: 'pulse 1s ease-in-out infinite',
-                    }} />
-                    <span style={{ fontSize: 13, color: '#00e5a0', fontWeight: 600 }}>
-                      Load test running... {loadTestConfig.vus} VUs
+                    <span className="live-dot" />
+                    <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>
+                      Running… {loadTestConfig.vus} VUs
                     </span>
                   </div>
                   <button
@@ -421,33 +303,31 @@ export default function AdminPage() {
                     onClick={stopLoadTest}
                     style={{ width: '100%', justifyContent: 'center' }}
                   >
-                    ⏹ Stop Test
+                    Stop Test
                   </button>
                 </div>
               )}
             </div>
           </div>
 
-          {/* k6 Output Terminal */}
+          {/* k6 Output */}
           {loadTestOutput.length > 0 && (
-            <div className="glass-card" style={{ padding: 20 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: '#00e5a0' }}>
-                📊 k6 Output
+            <div className="glass-card" style={{ padding: 18 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--green)' }}>
+                k6 Output
               </h3>
               <div style={{
-                maxHeight: 220, overflowY: 'auto',
+                maxHeight: 200, overflowY: 'auto',
                 fontFamily: 'monospace', fontSize: 11,
-                color: 'rgba(240,240,255,0.6)',
-                background: 'rgba(0, 0, 0, 0.3)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 8, padding: 12,
-                display: 'flex', flexDirection: 'column', gap: 3,
+                color: 'var(--text-2)',
+                background: 'var(--bg-inset)',
+                border: '1px solid var(--border)',
+                borderRadius: 6, padding: 10,
+                display: 'flex', flexDirection: 'column', gap: 2,
               }}>
                 {loadTestOutput.map((line, i) => (
-                  <div key={i} style={{
-                    color: line.type === 'stderr' ? '#ff9580' : 'rgba(240,240,255,0.7)',
-                  }}>
-                    <span style={{ color: 'rgba(240,240,255,0.3)', marginRight: 6 }}>{line.time}</span>
+                  <div key={i} style={{ color: line.type === 'stderr' ? 'var(--red)' : 'var(--text-2)' }}>
+                    <span style={{ color: 'var(--text-3)', marginRight: 6 }}>{line.time}</span>
                     {line.text}
                   </div>
                 ))}
@@ -457,21 +337,18 @@ export default function AdminPage() {
 
           {/* NGINX Info */}
           <div style={{
-            padding: '16px 20px',
-            background: 'rgba(108, 99, 255, 0.06)',
-            border: '1px solid rgba(108, 99, 255, 0.15)',
-            borderRadius: 14,
-            fontSize: 12, color: 'rgba(240,240,255,0.5)', lineHeight: 1.7,
+            padding: '14px 16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            fontSize: 12, color: 'var(--text-3)', lineHeight: 1.8,
           }}>
-            <strong style={{ color: 'rgba(240,240,255,0.8)', display: 'block', marginBottom: 6 }}>
-              ⚖️ Load Balancer (NGINX)
+            <strong style={{ color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>
+              Load Balancer (NGINX)
             </strong>
             Strategy: Least Connections<br />
             Upstream: S1:3001 → S2:3002 → S3:3003 → S4:3004<br />
-            WebSocket: Upgrade headers enabled<br />
-            <a href="/nginx-health" target="_blank" style={{ color: '#6c63ff' }}>
-              Check NGINX health →
-            </a>
+            WebSocket: Upgrade headers enabled
           </div>
         </div>
       </div>
@@ -479,11 +356,95 @@ export default function AdminPage() {
   );
 }
 
+function ServerCard({ serverId, status = { online: false }, systemInfo }) {
+  const isLeader = status.isLeader || (systemInfo?.currentLeader == serverId);
+  const isOnline = status.online !== false;
+
+  return (
+    <div style={{
+      padding: '16px 18px',
+      borderRadius: 10,
+      background: 'var(--bg-raised)',
+      border: `1px solid ${
+        !isOnline ? 'rgba(248,113,113,0.22)'
+        : isLeader ? 'rgba(245,158,11,0.25)'
+        : 'var(--border)'
+      }`,
+      transition: 'all 0.25s ease',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Leader glow */}
+      {isLeader && isOnline && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.07), transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 8,
+            background: isOnline
+              ? isLeader ? 'var(--amber-dim)' : 'var(--accent-dim)'
+              : 'var(--red-dim)',
+            border: `1px solid ${
+              isOnline
+                ? isLeader ? 'rgba(245,158,11,0.25)' : 'var(--accent-border)'
+                : 'rgba(248,113,113,0.22)'
+            }`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 800,
+            color: isOnline ? (isLeader ? 'var(--amber)' : 'var(--accent-light)') : 'var(--red)',
+          }}>
+            S{serverId}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>Server {serverId}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Port 300{serverId}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: isOnline ? (isLeader ? 'var(--amber)' : 'var(--green)') : 'var(--red)',
+            animation: isOnline ? 'pulse 2s ease-in-out infinite' : 'none',
+          }} />
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: isOnline ? (isLeader ? 'var(--amber)' : 'var(--green)') : 'var(--red)',
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+          }}>
+            {isOnline ? (isLeader ? 'Leader' : 'Follower') : 'Offline'}
+          </span>
+        </div>
+      </div>
+
+      {isOnline && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <InfoRow label="Uptime" value={status.uptime ? `${Math.floor(status.uptime)}s` : '—'} />
+          <InfoRow label="Lamport" value={status.lamportClock ?? '—'} />
+          <InfoRow label="Leader" value={status.currentLeader ? `S${status.currentLeader}` : '?'} />
+        </div>
+      )}
+
+      {!isOnline && (
+        <div style={{ fontSize: 12, color: 'var(--red)', textAlign: 'center', paddingTop: 4 }}>
+          Unreachable
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InfoRow({ label, value }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: 11, color: 'rgba(240,240,255,0.4)' }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(240,240,255,0.8)', fontFamily: 'monospace' }}>
+      <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', fontFamily: 'monospace' }}>
         {value}
       </span>
     </div>

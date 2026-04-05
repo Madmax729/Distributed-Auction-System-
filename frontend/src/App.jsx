@@ -10,12 +10,20 @@ import UserSetupModal from './components/UserSetupModal';
 import { getSocket } from './services/socket';
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser]           = useState(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [theme, setTheme]         = useState(() => {
+    return localStorage.getItem('theme') || 'dark';
+  });
+
+  // Apply theme to <html> element
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
-    // Initialize or restore user session
-    const savedUserId = localStorage.getItem('userId');
+    const savedUserId   = localStorage.getItem('userId');
     const savedUserName = localStorage.getItem('userName');
 
     if (savedUserId && savedUserName) {
@@ -24,7 +32,6 @@ function App() {
       setShowSetup(true);
     }
 
-    // Initialize socket connection
     getSocket();
   }, []);
 
@@ -36,23 +43,24 @@ function App() {
     setShowSetup(false);
   };
 
+  const toggleTheme = () =>
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+
   return (
     <div style={{ minHeight: '100vh' }}>
-      <Navbar user={user} onChangeUser={() => setShowSetup(true)} />
+      <Navbar user={user} onChangeUser={() => setShowSetup(true)} theme={theme} toggleTheme={toggleTheme} />
 
-      <main style={{ paddingTop: '80px' }}>
+      <main style={{ paddingTop: '60px' }}>
         <Routes>
-          <Route path="/" element={<HomePage user={user} />} />
-          <Route path="/auction/:auctionId" element={<AuctionPage user={user} />} />
-          <Route path="/create" element={<CreateAuctionPage user={user} />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/"                    element={<HomePage user={user} />} />
+          <Route path="/auction/:auctionId"  element={<AuctionPage user={user} />} />
+          <Route path="/create"              element={<CreateAuctionPage user={user} />} />
+          <Route path="/admin"               element={<AdminPage />} />
+          <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      {showSetup && (
-        <UserSetupModal onComplete={handleUserSetup} />
-      )}
+      {showSetup && <UserSetupModal onComplete={handleUserSetup} />}
     </div>
   );
 }

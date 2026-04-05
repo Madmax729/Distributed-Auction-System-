@@ -1,16 +1,15 @@
 # ─── Backend Dockerfile ──────────────────────────────────────
 FROM node:18-alpine
 
-# Install k6 for load testing
-RUN apk add --no-cache curl bash && \
-    curl -s https://dl.k6.io/key.gpg | gpg --dearmor -o /usr/share/keyrings/k6.gpg 2>/dev/null || true
+# Install curl only (needed for healthcheck + k6 script)
+RUN apk add --no-cache curl bash
 
 WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package.json package-lock.json* ./
 
-# Install dependencies
+# Install production dependencies only
 RUN npm install --omit=dev
 
 # Copy source code
@@ -23,7 +22,7 @@ RUN mkdir -p /app/uploads
 EXPOSE 3001
 
 # Health check
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=35s --retries=4 \
   CMD curl -f http://localhost:${PORT:-3001}/health || exit 1
 
 # Start server

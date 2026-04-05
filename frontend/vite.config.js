@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// When running `npm run dev`, proxy API calls to the backend directly.
+// Change BACKEND_URL to http://localhost:80 if running via Docker+NGINX.
+const BACKEND_URL = process.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,17 +12,21 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:80',
+        target: BACKEND_URL,
         changeOrigin: true,
-        ws: true,
+        ws: false,
       },
       '/socket.io': {
-        target: 'http://localhost:80',
+        target: BACKEND_URL,
         changeOrigin: true,
         ws: true,
       },
       '/uploads': {
-        target: 'http://localhost:80',
+        target: BACKEND_URL,
+        changeOrigin: true,
+      },
+      '/health': {
+        target: BACKEND_URL,
         changeOrigin: true,
       },
     },

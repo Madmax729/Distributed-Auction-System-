@@ -43,6 +43,13 @@ const io = new Server(server, {
   allowUpgrades: true,
 });
 
+// ─── Make io accessible globally and via req (MUST be first!) ──
+global.io = io;
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 // ─── Middleware ───────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
@@ -51,13 +58,6 @@ app.use(morgan('combined'));
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-// ─── Make io accessible globally and via req ─────────────────
-global.io = io;
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
 
 // ─── Routes ──────────────────────────────────────────────────
 app.use('/api/auctions', auctionRoutes);
@@ -116,9 +116,9 @@ const SERVER_ID = process.env.SERVER_ID || '1';
 
 async function start() {
   try {
-    // Connect to MongoDB
+    // Connect to MongoDB — throws on failure so we don't start without a DB
     await connectDB();
-    console.log(`[Server ${SERVER_ID}] Connected to MongoDB`);
+    console.log(`[Server ${SERVER_ID}] Connected to MongoDB ✅`);
 
     // Start HTTP server on all interfaces (0.0.0.0 for Docker + LAN)
     server.listen(PORT, '0.0.0.0', () => {
@@ -134,7 +134,15 @@ async function start() {
     }, 3000);
 
   } catch (err) {
-    console.error(`[Server ${SERVER_ID}] Startup error:`, err);
+    console.error(`\n[Server ${SERVER_ID}] ❌ STARTUP FAILED:\n  ${err.message}`);
+    if (err.message?.includes('timed out') || err.name === 'MongoServerSelectionError') {
+      console.error(
+        '\n[DB] ⚠️  This is likely a MongoDB Atlas IP whitelist issue.\n' +
+        '  1. Go to https://cloud.mongodb.com → Security → Network Access\n' +
+        '  2. Add your public IP or 0.0.0.0/0 (allow from anywhere)\n' +
+        '  3. Wait ~30s then restart: docker compose down && docker compose up --build\n'
+      );
+    }
     process.exit(1);
   }
 }

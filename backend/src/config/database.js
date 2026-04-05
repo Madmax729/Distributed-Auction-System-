@@ -1,31 +1,38 @@
 // ─── MongoDB Connection Config ────────────────────────────────
-// MONGO_URI must be set in the root .env file (loaded by docker-compose via env_file).
-// Falls back to the Atlas URI if the env var is missing (e.g. local dev).
+// Supports both local MongoDB (Compass) and Atlas.
+// Set MONGO_URI in .env:
+//   Local:  mongodb://localhost:27017/auction_system
+//   Docker: mongodb://host.docker.internal:27017/auction_system
+//   Atlas:  mongodb+srv://<user>:<pass>@cluster.mongodb.net/auction_system
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
-  const uriSource = process.env.MONGO_URI ? 'env:MONGO_URI' : 'hardcoded fallback';
-  const uri = process.env.MONGO_URI ||
-    'mongodb+srv://sujalpathrabe_db_user:8nJte3nTpye19yxS@cluster0.o8xhlxr.mongodb.net/auction_system?appName=Cluster0';
+  const uri = process.env.MONGO_URI;
 
-  // Mask credentials in logs for security
-  const maskedUri = uri.replace(/:\/\/[^@]+@/, '://***:***@');
-
-  console.log(`[DB] Connecting via (${uriSource}): ${maskedUri}`);
-
-  try {
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 10000,  // wait up to 10s to find Atlas
-      socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      retryWrites: true,
-    });
-    console.log(`[DB] ✅ MongoDB connected successfully`);
-  } catch (err) {
-    console.error(`[DB] ❌ Connection error (${uriSource}): ${err.message}`);
-    console.log('[DB] Retrying in 5 seconds...');
-    setTimeout(connectDB, 5000);
+  if (!uri) {
+    throw new Error(
+      '[DB] MONGO_URI is not set.\n' +
+      '  For local MongoDB:  MONGO_URI=mongodb://localhost:27017/auction_system\n' +
+      '  For Docker:         MONGO_URI=mongodb://host.docker.internal:27017/auction_system'
+    );
   }
+
+  // Mask credentials in logs
+  const maskedUri = uri.replace(/:\/\/([^:]+):([^@]+)@/, '://***:***@');
+  console.log(`[DB] Connecting to: ${maskedUri}`);
+
+  const isAtlas = uri.startsWith('mongodb+srv');
+
+  await mongoose.connect(uri, {
+    serverSelectionTimeoutMS: isAtlas ? 15000 : 8000,
+    connectTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    // retryWrites only supported on Atlas replica sets
+    ...(isAtlas ? { retryWrites: true, w: 'majority' } : {}),
+  });
+
+  console.log('[DB] ✅ MongoDB connected successfully');
 };
 
 module.exports = connectDB;

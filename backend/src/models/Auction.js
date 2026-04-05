@@ -17,6 +17,11 @@ const auctionSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  category: {
+    type: String,
+    enum: ['Electronics', 'Art', 'Collectibles', 'Vehicles', 'Fashion', 'Sports', 'Books', 'Other'],
+    default: 'Other',
+  },
   startingPrice: {
     type: Number,
     required: true,
@@ -27,12 +32,16 @@ const auctionSchema = new mongoose.Schema({
     default: 0,
   },
   highestBidder: {
-    type: String,         // userId
+    type: String,
     default: null,
   },
   highestBidderName: {
     type: String,
     default: null,
+  },
+  bidCount: {
+    type: Number,
+    default: 0,
   },
   status: {
     type: String,
@@ -44,14 +53,17 @@ const auctionSchema = new mongoose.Schema({
     required: true,
   },
   createdBy: {
-    type: String,         // userId
+    type: String,
     required: true,
+  },
+  createdByName: {
+    type: String,
+    default: 'Anonymous',
   },
   imagePath: {
     type: String,
     default: null,
   },
-  // Lamport timestamp of last bid applied to this auction
   lastLamportTimestamp: {
     type: Number,
     default: 0,
@@ -59,5 +71,9 @@ const auctionSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
+
+// Index for searching by status
+auctionSchema.index({ status: 1, createdAt: -1 });
+auctionSchema.index({ category: 1, status: 1 });
 
 module.exports = mongoose.model('Auction', auctionSchema);

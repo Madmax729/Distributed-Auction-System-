@@ -115,11 +115,12 @@ router.post('/', bidRateLimiter, async (req, res) => {
 
     await bid.save();
 
-    // Update auction state
+    // Update auction state (atomic increment for bidCount)
     auction.currentHighestBid = bidAmount;
     auction.highestBidder = userId;
     auction.highestBidderName = userName || 'Anonymous';
     auction.lastLamportTimestamp = lamportTimestamp;
+    auction.bidCount = (auction.bidCount || 0) + 1;
     await auction.save();
 
     console.log(
@@ -136,6 +137,7 @@ router.post('/', bidRateLimiter, async (req, res) => {
       highestBidderName: userName,
       lamportTimestamp,
       serverId: SERVER_ID,
+      bidCount: auction.bidCount,
     });
 
     // Replicate to followers asynchronously (don't block response)

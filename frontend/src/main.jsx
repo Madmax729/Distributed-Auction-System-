@@ -13,20 +13,22 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         position="top-right"
         toastOptions={{
           style: {
-            background: 'rgba(15, 15, 40, 0.95)',
-            color: '#f0f0ff',
-            border: '1px solid rgba(108, 99, 255, 0.3)',
-            backdropFilter: 'blur(20px)',
+            background: '#1c2233',
+            color: '#e8edf8',
+            border: '1px solid rgba(99,102,241,0.25)',
+            backdropFilter: 'blur(16px)',
             fontFamily: "'Inter', sans-serif",
-            fontSize: '14px',
+            fontSize: '13px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            borderRadius: '10px',
           },
           success: {
-            iconTheme: { primary: '#00e5a0', secondary: '#001a12' },
+            iconTheme: { primary: '#34d399', secondary: '#052e16' },
           },
           error: {
-            iconTheme: { primary: '#ff6584', secondary: '#1a0010' },
+            iconTheme: { primary: '#f87171', secondary: '#1c0a0a' },
           },
-          duration: 3000,
+          duration: 3500,
         }}
       />
     </BrowserRouter>

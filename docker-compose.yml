@@ -3,8 +3,11 @@
 # ============================================================
 #
 # Architecture:
-#   MongoDB Atlas (cloud) ← shared database for ALL servers
-#   Docker              ← simulates 4 independent servers on 1 machine
+#   MongoDB — runs on your HOST machine (connect via MongoDB Compass)
+#   Docker  — simulates 4 independent servers on 1 machine
+#
+# Each Docker container reaches host MongoDB via:
+#   host.docker.internal:27017
 #
 # Services:
 #   server1 (S1, port 3001) — Auction backend node
@@ -13,17 +16,9 @@
 #   server4 (S4, port 3004) — Auction backend node
 #   nginx   (port 80)       — Load balancer / reverse proxy
 #
-# Leader Election: Bully Algorithm (runs at startup + on failure)
-#   - All 4 servers start equal (IS_LEADER=false).
-#   - Each runs a staggered startup election.
-#   - Server with highest alive SERVER_ID always wins.
-#   - S4 wins at startup; if S4 dies, S3 wins; and so on.
-#   - Servers talk to each other via POST /api/internal/leader-election.
-#
-# MONGO_URI is loaded from root .env (avoids YAML special-char issues).
-#
-# To start:  docker compose up --build
-# To stop:   docker compose down
+# BEFORE STARTING:
+#   1. Make sure MongoDB is running locally (Compass or mongod)
+#   2. docker compose up --build
 # ============================================================
 
 version: '3.8'
@@ -37,7 +32,7 @@ volumes:
 
 services:
 
-  # ─── Backend Server 1 (S1) — Lowest ID ────────────────────────────────────
+  # ─── Backend Server 1 (S1) ────────────────────────────────────────────────
   server1:
     build:
       context: ./backend
@@ -45,7 +40,7 @@ services:
     container_name: auction-server1
     restart: unless-stopped
     env_file:
-      - .env            # ← loads MONGO_URI from root .env (safe, no YAML parsing)
+      - .env
     environment:
       SERVER_ID: "1"
       PORT: "3001"
@@ -57,12 +52,14 @@ services:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 15s
       timeout: 5s
       retries: 4
-      start_period: 25s
+      start_period: 35s
 
   # ─── Backend Server 2 (S2) ────────────────────────────────────────────────
   server2:
@@ -84,12 +81,14 @@ services:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 15s
       timeout: 5s
       retries: 4
-      start_period: 25s
+      start_period: 35s
 
   # ─── Backend Server 3 (S3) ────────────────────────────────────────────────
   server3:
@@ -111,12 +110,14 @@ services:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
       interval: 15s
       timeout: 5s
       retries: 4
-      start_period: 25s
+      start_period: 35s
 
   # ─── Backend Server 4 (S4) — Highest ID = wins Bully election ─────────────
   server4:
@@ -138,12 +139,14 @@ services:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
       interval: 15s
       timeout: 5s
       retries: 4
-      start_period: 25s
+      start_period: 35s
 
   # ─── NGINX Load Balancer ──────────────────────────────────────────────────
   nginx:

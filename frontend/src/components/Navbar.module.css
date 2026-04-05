@@ -1,259 +1,262 @@
-/* ─── Navbar Styles ─────────────────────────────────────────── */
-
+/* ─── Navbar ─────────────────────────────────────────────────── */
 .navbar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  height: 72px;
-  background: rgba(5, 5, 16, 0.85);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-bottom: 1px solid rgba(108, 99, 255, 0.15);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  height: 60px;
+  background: var(--navbar-bg);
+  border-bottom: 1px solid var(--navbar-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  display: flex;
+  align-items: center;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.navbar.scrolled {
+  box-shadow: var(--shadow-sm);
 }
 
 .container {
-  max-width: 1280px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 100%;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 8px;
+  width: 100%;
 }
 
-/* ─── Logo ─── */
+/* ── Logo ──────────────────────────────────────────────────── */
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   text-decoration: none;
   flex-shrink: 0;
+  margin-right: 8px;
 }
 
-.logoIcon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #6c63ff, #4facfe);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  box-shadow: 0 0 15px rgba(108, 99, 255, 0.4);
-  animation: glow 2s ease-in-out infinite;
+.logoMark {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.30);
+  transition: box-shadow 0.2s ease;
 }
-
-@keyframes glow {
-  0%, 100% { box-shadow: 0 0 15px rgba(108, 99, 255, 0.4); }
-  50% { box-shadow: 0 0 25px rgba(108, 99, 255, 0.7); }
+.logo:hover .logoMark {
+  box-shadow: 0 4px 16px rgba(99,102,241,0.45);
 }
 
 .logoText {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 22px;
-  font-weight: 800;
-  color: #f0f0ff;
-  letter-spacing: -0.5px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.02em;
+  transition: color 0.3s ease;
 }
 
-.logoAccent {
-  background: linear-gradient(135deg, #6c63ff, #4facfe);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+.logoAccent { color: var(--accent-light); }
 
 .logoBadge {
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  color: rgba(108, 99, 255, 0.7);
-  background: rgba(108, 99, 255, 0.1);
-  border: 1px solid rgba(108, 99, 255, 0.2);
+  letter-spacing: 0.10em;
+  color: var(--text-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 2px 6px;
-  margin-top: -2px;
+  padding: 2px 5px;
+  text-transform: uppercase;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* ─── Nav Links ─── */
+/* ── Nav Links ─────────────────────────────────────────────── */
 .links {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex: 1;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .link {
-  text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 13.5px;
   font-weight: 500;
-  color: rgba(240, 240, 255, 0.6);
-  transition: all 0.2s ease;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: color 0.18s ease, background-color 0.18s ease;
+  letter-spacing: -0.01em;
 }
-
 .link:hover {
-  color: #f0f0ff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+  background: var(--bg-raised);
 }
-
 .linkActive {
-  color: #f0f0ff;
-  background: rgba(108, 99, 255, 0.15);
-  border: 1px solid rgba(108, 99, 255, 0.25);
+  color: var(--accent);
+  background: var(--accent-dim);
+  font-weight: 600;
 }
 
-/* ─── Server Status ─── */
-.serverStatus {
+/* ── Right Action Group ────────────────────────────────────── */
+.actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 8px 14px;
+  gap: 8px;
+  margin-left: 16px;
   flex-shrink: 0;
 }
 
+/* ── Server Status Badge ───────────────────────────────────── */
+.serverStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full, 999px);
+  background: var(--bg-raised);
+  cursor: default;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
 .statusDot {
-  width: 10px;
-  height: 10px;
+  width: 6px; height: 6px;
   border-radius: 50%;
   position: relative;
   flex-shrink: 0;
 }
-
-.statusRing {
-  position: absolute;
-  inset: -3px;
+.statusDot::after {
+  content: '';
+  position: absolute; inset: 0;
   border-radius: 50%;
-  border: 2px solid currentColor;
-  animation: pulseRing 1.5s ease-out infinite;
+  animation: pulseRing 2s ease-out infinite;
 }
-
-@keyframes pulseRing {
-  0% { transform: scale(0.8); opacity: 0.8; }
-  100% { transform: scale(2); opacity: 0; }
+.dotLeader {
+  background: var(--amber);
 }
-
-.statusLeader {
-  background: #ffd700;
-  color: #ffd700;
+.dotLeader::after { background: var(--amber); }
+.dotFollower {
+  background: var(--green);
 }
-
-.statusFollower {
-  background: #4facfe;
-  color: #4facfe;
-}
-
-.statusInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
+.dotFollower::after { background: var(--green); }
 
 .serverLabel {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: rgba(240, 240, 255, 0.9);
-  letter-spacing: 0.05em;
+  color: var(--text-1);
+  font-family: 'Space Grotesk', sans-serif;
+}
+.roleLeader   { font-size: 11px; color: var(--amber); font-weight: 600; }
+.roleFollower { font-size: 11px; color: var(--text-3); }
+
+/* ── Icon Button (theme toggle) ────────────────────────────── */
+.iconBtn {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+.iconBtn:hover {
+  background: var(--bg-raised);
+  color: var(--text-1);
+  border-color: var(--border-hover);
 }
 
-.leaderTag {
-  font-size: 10px;
-  color: #ffd700;
-  font-weight: 600;
-}
-
-.followerTag {
-  font-size: 10px;
-  color: #4facfe;
-  font-weight: 600;
-}
-
-/* ─── User Chip ─── */
+/* ── User Chip ─────────────────────────────────────────────── */
 .userChip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(108, 99, 255, 0.1);
-  border: 1px solid rgba(108, 99, 255, 0.25);
-  border-radius: 12px;
-  padding: 6px 14px 6px 6px;
+  gap: 7px;
+  padding: 3px 10px 3px 3px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
   flex-shrink: 0;
 }
-
 .userChip:hover {
-  background: rgba(108, 99, 255, 0.18);
-  border-color: rgba(108, 99, 255, 0.4);
+  background: var(--bg-raised);
+  border-color: var(--border-hover);
 }
 
 .userAvatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #6c63ff, #4facfe);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
   font-weight: 700;
-  color: white;
+  color: #fff;
   flex-shrink: 0;
 }
 
 .userName {
   font-size: 13px;
-  font-weight: 600;
-  color: rgba(240, 240, 255, 0.9);
-  max-width: 100px;
+  font-weight: 500;
+  color: var(--text-2);
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ─── Mobile Menu ─── */
+/* ── Mobile Toggle ─────────────────────────────────────────── */
 .menuToggle {
   display: none;
-  background: none;
-  border: none;
-  color: #f0f0ff;
-  font-size: 20px;
+  width: 34px; height: 34px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-2);
   cursor: pointer;
-  flex-shrink: 0;
+  transition: all 0.18s ease;
 }
+.menuToggle:hover { background: var(--bg-raised); color: var(--text-1); }
 
+/* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .menuToggle { display: block; }
+  .logoBadge    { display: none; }
+  .serverStatus { display: none; }
+  .menuToggle   { display: flex; }
 
   .links {
     display: none;
-    position: fixed;
-    top: 72px;
-    left: 0;
-    right: 0;
+    position: absolute;
+    top: 60px; left: 0; right: 0;
+    background: var(--navbar-bg);
+    border-bottom: 1px solid var(--navbar-border);
+    backdrop-filter: blur(18px);
     flex-direction: column;
-    background: rgba(5, 5, 16, 0.97);
-    border-bottom: 1px solid rgba(108, 99, 255, 0.2);
-    padding: 16px;
-    gap: 8px;
+    align-items: stretch;
+    padding: 8px 16px 16px;
+    gap: 2px;
+    margin-left: 0;
   }
+  .linksOpen { display: flex; }
+  .link { padding: 10px 14px; }
+}
 
-  .linksOpen {
-    display: flex;
-  }
-
-  .link {
-    width: 100%;
-    text-align: center;
-    padding: 14px;
-  }
-
-  .logoBadge { display: none; }
-  .serverStatus { display: none; }
+/* ── Keyframes ─────────────────────────────────────────────── */
+@keyframes pulseRing {
+  0%   { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0; }
 }
