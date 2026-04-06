@@ -1,27 +1,44 @@
 // ─── Socket.io Client Service ─────────────────────────────────
-import { io } from 'socket.io-client';
+import { io } from "socket.io-client";
 
 let socket = null;
 
+// ─── Dynamic Socket URL (detects Ngrok HTTPS, localhost HTTPS/HTTP, etc) ───
+const getSocketURL = () => {
+  // Detect if we're using HTTPS (common with Ngrok)
+  const protocol = window.location.protocol === "https:" ? "https" : "http";
+  const { host } = window.location;
+
+  // Return full URL (e.g., https://abc123.ngrok.io, http://localhost:80)
+  return `${protocol}//${host}`;
+};
+
 export const getSocket = () => {
   if (!socket) {
-    socket = io('/', {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
+    const socketURL = getSocketURL();
+    console.log(`[Socket.io] Connecting to: ${socketURL}`);
+
+    socket = io(socketURL, {
+      path: "/socket.io",
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 10,
+      // Critical for Ngrok + NGINX: ensure headers are sent
+      extraHeaders: {
+        "ngrok-skip-browser-warning": "true",
+      },
     });
 
-    socket.on('connect', () => {
+    socket.on("connect", () => {
       console.log(`[Socket.io] Connected: ${socket.id}`);
     });
 
-    socket.on('disconnect', (reason) => {
+    socket.on("disconnect", (reason) => {
       console.warn(`[Socket.io] Disconnected: ${reason}`);
     });
 
-    socket.on('connect_error', (err) => {
+    socket.on("connect_error", (err) => {
       console.error(`[Socket.io] Connection error: ${err.message}`);
     });
   }
@@ -31,12 +48,12 @@ export const getSocket = () => {
 
 export const joinAuctionRoom = (auctionId) => {
   const s = getSocket();
-  s.emit('join-auction', auctionId);
+  s.emit("join-auction", auctionId);
 };
 
 export const leaveAuctionRoom = (auctionId) => {
   const s = getSocket();
-  s.emit('leave-auction', auctionId);
+  s.emit("leave-auction", auctionId);
 };
 
 export const disconnectSocket = () => {

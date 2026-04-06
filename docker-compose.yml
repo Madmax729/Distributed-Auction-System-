@@ -1,27 +1,4 @@
-# ============================================================
-# DISTRIBUTED ONLINE AUCTION SYSTEM — Docker Compose
-# ============================================================
-#
-# Architecture:
-#   MongoDB — runs on your HOST machine (connect via MongoDB Compass)
-#   Docker  — simulates 4 independent servers on 1 machine
-#
-# Each Docker container reaches host MongoDB via:
-#   host.docker.internal:27017
-#
-# Services:
-#   server1 (S1, port 3001) — Auction backend node
-#   server2 (S2, port 3002) — Auction backend node
-#   server3 (S3, port 3003) — Auction backend node
-#   server4 (S4, port 3004) — Auction backend node
-#   nginx   (port 80)       — Load balancer / reverse proxy
-#
-# BEFORE STARTING:
-#   1. Make sure MongoDB is running locally (Compass or mongod)
-#   2. docker compose up --build
-# ============================================================
-
-version: '3.8'
+version: "3.9"
 
 networks:
   auction-network:
@@ -31,8 +8,7 @@ volumes:
   uploads-data:
 
 services:
-
-  # ─── Backend Server 1 (S1) ────────────────────────────────────────────────
+  # ─── Backend Server 1 ─────────────────────────────────────
   server1:
     build:
       context: ./backend
@@ -40,28 +16,21 @@ services:
     container_name: auction-server1
     restart: unless-stopped
     env_file:
-      - .env
+      - ./.env
     environment:
       SERVER_ID: "1"
       PORT: "3001"
       IS_LEADER: "false"
       PEER_SERVERS: "http://server2:3002,http://server3:3003,http://server4:3004"
-    ports:
-      - "3001:3001"
+      MONGO_URI: ${MONGO_URI}
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 35s
 
-  # ─── Backend Server 2 (S2) ────────────────────────────────────────────────
+  # ─── Backend Server 2 ─────────────────────────────────────
   server2:
     build:
       context: ./backend
@@ -69,28 +38,21 @@ services:
     container_name: auction-server2
     restart: unless-stopped
     env_file:
-      - .env
+      - ./.env
     environment:
       SERVER_ID: "2"
       PORT: "3002"
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server3:3003,http://server4:3004"
-    ports:
-      - "3002:3002"
+      MONGO_URI: ${MONGO_URI}
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 35s
 
-  # ─── Backend Server 3 (S3) ────────────────────────────────────────────────
+  # ─── Backend Server 3 ─────────────────────────────────────
   server3:
     build:
       context: ./backend
@@ -98,28 +60,21 @@ services:
     container_name: auction-server3
     restart: unless-stopped
     env_file:
-      - .env
+      - ./.env
     environment:
       SERVER_ID: "3"
       PORT: "3003"
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server4:3004"
-    ports:
-      - "3003:3003"
+      MONGO_URI: ${MONGO_URI}
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 35s
 
-  # ─── Backend Server 4 (S4) — Highest ID = wins Bully election ─────────────
+  # ─── Backend Server 4 ─────────────────────────────────────
   server4:
     build:
       context: ./backend
@@ -127,28 +82,21 @@ services:
     container_name: auction-server4
     restart: unless-stopped
     env_file:
-      - .env
+      - ./.env
     environment:
       SERVER_ID: "4"
       PORT: "3004"
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server3:3003"
-    ports:
-      - "3004:3004"
+      MONGO_URI: ${MONGO_URI}
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 35s
 
-  # ─── NGINX Load Balancer ──────────────────────────────────────────────────
+  # ─── NGINX Load Balancer & Static File Server ────────────────
   nginx:
     image: nginx:alpine
     container_name: auction-nginx
@@ -156,7 +104,12 @@ services:
     ports:
       - "80:80"
     volumes:
+      - ./frontend/dist:/usr/share/nginx/html
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ─── Mount frontend dist directory for static files serving ───
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      # ─── Mount uploads for public access ───────────────────────
+      - uploads-data:/app/uploads:ro
     networks:
       - auction-network
     depends_on:
@@ -164,3 +117,10 @@ services:
       - server2
       - server3
       - server4
+    healthcheck:
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
