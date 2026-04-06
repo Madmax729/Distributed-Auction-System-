@@ -83,7 +83,8 @@ router.post("/", bidRateLimiter, async (req, res) => {
       // Auto-end auction
       auction.status = "ENDED";
       await auction.save();
-      req.io.emit("auction-ended", {
+      // 🔥 Emit ONLY to this auction room, not globally
+      req.io.to(`auction:${auctionId}`).emit("auction-ended", {
         auctionId,
         winner: auction.highestBidder,
         winnerName: auction.highestBidderName,
@@ -148,8 +149,9 @@ router.post("/", bidRateLimiter, async (req, res) => {
         `on auction ${auctionId} (Lamport: ${lamportTimestamp})`,
     );
 
-    // Broadcast real-time bid update to all clients
-    req.io.emit("new-bid", {
+    // 🔥 Broadcast to ROOM only (not global)
+    // Room format must match: auction:${auctionId}
+    req.io.to(`auction:${auctionId}`).emit("new-bid", {
       auctionId,
       bid: bid.toObject(),
       currentHighestBid: bidAmount,

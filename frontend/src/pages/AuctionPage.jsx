@@ -49,12 +49,13 @@ export default function AuctionPage({ user }) {
   useEffect(() => {
     const socket = getSocket();
 
-    // 🔥 Join room immediately (no auction dependency)
+    // 🔥 Join room immediately (consistency: backend uses auction:${id})
     joinAuctionRoom(auctionId);
 
     // 🔥 HANDLE NEW BID
     const handleNewBid = (data) => {
       if (data.auctionId !== auctionId) return;
+      console.log("🔥 RECEIVED BID:", data);
 
       setBids((prev) => {
         const exists = prev.find((b) => b.bidId === data.bid.bidId);
@@ -107,12 +108,15 @@ export default function AuctionPage({ user }) {
     });
 
     return () => {
+      console.log(
+        `[AuctionPage] Cleanup: removing listeners for auction ${auctionId}`,
+      );
       leaveAuctionRoom(auctionId);
       socket.off("new-bid", handleNewBid);
       socket.off("auction-ended");
       socket.off("leader-changed");
     };
-  }, [auctionId]);
+  }, [auctionId, user?.userId]);
 
   const fetchAuction = async () => {
     try {
@@ -151,14 +155,44 @@ export default function AuctionPage({ user }) {
     }
     try {
       setBidLoading(true);
+
+      // 🔥 OPTIMISTIC UPDATE: Update UI immediately
+      const newBid = {
+        bidId: `temp-${Date.now()}`,
+        userId: user.userId,
+        userName: user.userName,
+        amount,
+        timestamp: new Date(),
+        serverId: "local",
+      };
+
+      // Optimistically update auction price
+      setAuction((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentHighestBid: amount,
+              highestBidder: user.userId,
+              highestBidderName: user.userName,
+            }
+          : prev,
+      );
+
+      // Optimistically add bid to feed
+      setBids((prev) => [newBid, ...prev]);
+
+      // Update suggested next bid
+      setBidAmount((amount + 1).toString());
+
+      // Send to server (will be confirmed by socket event)
       await bidAPI.place({
         auctionId,
         userId: user.userId,
         userName: user.userName,
         amount,
       });
+
       toast.success(`Bid of $${amount.toLocaleString()} placed!`);
-      setBidAmount((amount + 1).toString());
     } catch (err) {
       const msg =
         err.response?.data?.message ||

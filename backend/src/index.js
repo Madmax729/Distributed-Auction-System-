@@ -121,15 +121,16 @@ app.get("/api/server-info", (req, res) => {
 io.on("connection", (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
 
-  socket.on("join-auction", (auctionId) => {
-    socket.join(`auction:${auctionId}`);
-    console.log(
-      `[Socket.io] Client ${socket.id} joined auction room: ${auctionId}`,
-    );
+  socket.on("join-auction", (roomName) => {
+    // roomName format: auction:${auctionId}
+    socket.join(roomName);
+    console.log(`[Socket.io] Client ${socket.id} joined room: ${roomName}`);
   });
 
-  socket.on("leave-auction", (auctionId) => {
-    socket.leave(`auction:${auctionId}`);
+  socket.on("leave-auction", (roomName) => {
+    // roomName format: auction:${auctionId}
+    socket.leave(roomName);
+    console.log(`[Socket.io] Client ${socket.id} left room: ${roomName}`);
   });
 
   socket.on("disconnect", () => {

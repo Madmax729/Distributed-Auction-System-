@@ -48,12 +48,16 @@ export const getSocket = () => {
 
 export const joinAuctionRoom = (auctionId) => {
   const s = getSocket();
-  s.emit("join-auction", auctionId);
+  const roomName = `auction:${auctionId}`;
+  console.log(`[Socket.io] Joining room: ${roomName}`);
+  s.emit("join-auction", roomName);
 };
 
 export const leaveAuctionRoom = (auctionId) => {
   const s = getSocket();
-  s.emit("leave-auction", auctionId);
+  const roomName = `auction:${auctionId}`;
+  console.log(`[Socket.io] Leaving room: ${roomName}`);
+  s.emit("leave-auction", roomName);
 };
 
 export const disconnectSocket = () => {
