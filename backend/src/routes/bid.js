@@ -3,28 +3,33 @@
 // Followers forward bid requests to the leader.
 // ─────────────────────────────────────────────────────────────
 
-const express = require('express');
-const { v4: uuidv4 } = require('uuid');
-const axios = require('axios');
+const express = require("express");
+const { v4: uuidv4 } = require("uuid");
+const axios = require("axios");
 const router = express.Router();
 
-const Bid = require('../models/Bid');
-const Auction = require('../models/Auction');
-const User = require('../models/User');
-const { bidRateLimiter } = require('../middleware/rateLimiter');
-const { getLeaderState, getPeerServers } = require('../distributed/leaderElection');
-const { getClockForSend, updateClock } = require('../distributed/lamportClock');
-const { replicateBid } = require('../distributed/replication');
+const Bid = require("../models/Bid");
+const Auction = require("../models/Auction");
+const User = require("../models/User");
+const { bidRateLimiter } = require("../middleware/rateLimiter");
+const {
+  getLeaderState,
+  getPeerServers,
+} = require("../distributed/leaderElection");
+const { getClockForSend, updateClock } = require("../distributed/lamportClock");
+const { replicateBid } = require("../distributed/replication");
 
-const SERVER_ID = process.env.SERVER_ID || '1';
+const SERVER_ID = process.env.SERVER_ID || "1";
 
 // ─── POST /api/bids — Place a bid ────────────────────────────
-router.post('/', bidRateLimiter, async (req, res) => {
+router.post("/", bidRateLimiter, async (req, res) => {
   try {
     const { auctionId, userId, userName, amount } = req.body;
 
     if (!auctionId || !userId || !amount) {
-      return res.status(400).json({ error: 'auctionId, userId, and amount are required' });
+      return res
+        .status(400)
+        .json({ error: "auctionId, userId, and amount are required" });
     }
 
     const state = getLeaderState();
@@ -34,28 +39,33 @@ router.post('/', bidRateLimiter, async (req, res) => {
     if (!state.isLeader) {
       console.log(
         `[Bid][Server ${SERVER_ID}] Not leader. ` +
-        `Forwarding bid to Leader Server ${state.currentLeader}`
+          `Forwarding bid to Leader Server ${state.currentLeader}`,
       );
 
       const peers = getPeerServers();
-      const leaderPeer = peers.find(p => p.id === state.currentLeader);
+      const leaderPeer = peers.find((p) => p.id === state.currentLeader);
 
       if (!leaderPeer) {
         return res.status(503).json({
-          error: 'Leader unavailable',
-          message: 'Current leader is not reachable. An election may be in progress.',
+          error: "Leader unavailable",
+          message:
+            "Current leader is not reachable. An election may be in progress.",
         });
       }
 
       try {
-        const leaderResponse = await axios.post(`${leaderPeer.url}/api/bids`, req.body, {
-          timeout: 5000,
-          headers: { 'x-forwarded-from': `server${SERVER_ID}` },
-        });
+        const leaderResponse = await axios.post(
+          `${leaderPeer.url}/api/bids`,
+          req.body,
+          {
+            timeout: 5000,
+            headers: { "x-forwarded-from": `server${SERVER_ID}` },
+          },
+        );
         return res.json(leaderResponse.data);
       } catch (err) {
         return res.status(503).json({
-          error: 'Leader forwarding failed',
+          error: "Leader forwarding failed",
           message: err.message,
         });
       }
@@ -63,30 +73,40 @@ router.post('/', bidRateLimiter, async (req, res) => {
 
     // ─── Leader processes the bid ─────────────────────────────
     const auction = await Auction.findOne({ auctionId });
-    if (!auction) return res.status(404).json({ error: 'Auction not found' });
-    if (auction.status === 'ENDED') {
-      return res.status(400).json({ error: 'Auction has ended' });
+    if (!auction) return res.status(404).json({ error: "Auction not found" });
+    if (auction.status === "ENDED") {
+      return res.status(400).json({ error: "Auction has ended" });
     }
 
     // Check if auction time has expired
     if (new Date() > auction.endTime) {
       // Auto-end auction
-      auction.status = 'ENDED';
+      auction.status = "ENDED";
       await auction.save();
-      req.io.emit('auction-ended', {
+      req.io.emit("auction-ended", {
         auctionId,
         winner: auction.highestBidder,
         winnerName: auction.highestBidderName,
         winningBid: auction.currentHighestBid,
       });
-      return res.status(400).json({ error: 'Auction time has expired' });
+      return res.status(400).json({ error: "Auction time has expired" });
+    }
+
+    const lastBid = await Bid.findOne({ auctionId }).sort({
+      lamportTimestamp: -1,
+    });
+
+    if (lastBid && lastBid.userId === userId) {
+      return res.status(400).json({
+        error: "You cannot bid twice in a row",
+      });
     }
 
     // Validate bid amount
     const bidAmount = parseFloat(amount);
     if (bidAmount <= auction.currentHighestBid) {
       return res.status(400).json({
-        error: 'Bid too low',
+        error: "Bid too low",
         message: `Bid must be higher than current highest bid of $${auction.currentHighestBid}`,
         currentHighestBid: auction.currentHighestBid,
       });
@@ -95,8 +115,8 @@ router.post('/', bidRateLimiter, async (req, res) => {
     // Ensure user exists
     await User.findOneAndUpdate(
       { userId },
-      { userId, name: userName || 'Anonymous' },
-      { upsert: true }
+      { userId, name: userName || "Anonymous" },
+      { upsert: true },
     );
 
     // Assign Lamport timestamp (increment on send)
@@ -107,7 +127,7 @@ router.post('/', bidRateLimiter, async (req, res) => {
       bidId: uuidv4(),
       auctionId,
       userId,
-      userName: userName || 'Anonymous',
+      userName: userName || "Anonymous",
       amount: bidAmount,
       lamportTimestamp,
       serverId: SERVER_ID,
@@ -118,18 +138,18 @@ router.post('/', bidRateLimiter, async (req, res) => {
     // Update auction state (atomic increment for bidCount)
     auction.currentHighestBid = bidAmount;
     auction.highestBidder = userId;
-    auction.highestBidderName = userName || 'Anonymous';
+    auction.highestBidderName = userName || "Anonymous";
     auction.lastLamportTimestamp = lamportTimestamp;
     auction.bidCount = (auction.bidCount || 0) + 1;
     await auction.save();
 
     console.log(
       `[Bid][Leader Server ${SERVER_ID}] Accepted: $${bidAmount} by ${userId} ` +
-      `on auction ${auctionId} (Lamport: ${lamportTimestamp})`
+        `on auction ${auctionId} (Lamport: ${lamportTimestamp})`,
     );
 
     // Broadcast real-time bid update to all clients
-    req.io.emit('new-bid', {
+    req.io.emit("new-bid", {
       auctionId,
       bid: bid.toObject(),
       currentHighestBid: bidAmount,
@@ -141,26 +161,25 @@ router.post('/', bidRateLimiter, async (req, res) => {
     });
 
     // Replicate to followers asynchronously (don't block response)
-    replicateBid(bid.toObject(), auction.toObject()).catch(err =>
-      console.error('[Bid] Replication error:', err.message)
+    replicateBid(bid.toObject(), auction.toObject()).catch((err) =>
+      console.error("[Bid] Replication error:", err.message),
     );
 
     res.status(201).json({
       bid: bid.toObject(),
       auction: auction.toObject(),
-      message: 'Bid placed successfully',
+      message: "Bid placed successfully",
       processedBy: `Server ${SERVER_ID}`,
       lamportTimestamp,
     });
-
   } catch (err) {
-    console.error('[Bid] Error:', err.message);
+    console.error("[Bid] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── GET /api/bids/:auctionId — Get bids for an auction ──────
-router.get('/:auctionId', async (req, res) => {
+router.get("/:auctionId", async (req, res) => {
   try {
     const bids = await Bid.find({ auctionId: req.params.auctionId })
       .sort({ lamportTimestamp: -1, serverId: 1 })
