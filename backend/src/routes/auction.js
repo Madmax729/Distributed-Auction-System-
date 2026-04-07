@@ -31,6 +31,9 @@ const autoEndExpired = async (io) => {
 
     if (io) {
       // 🔥 Emit ONLY to auction room, not globally
+      console.log(
+        `[Auction] Auto-ended: ${auction.auctionId}, broadcasting to room auction:${auction.auctionId}`,
+      );
       io.to(`auction:${auction.auctionId}`).emit("auction-ended", {
         auctionId: auction.auctionId,
         winner: auction.highestBidder,
@@ -113,12 +116,10 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     if (!itemName || startingPrice === undefined || !endTime || !userId) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Missing required fields: itemName, startingPrice, endTime, userId",
-        });
+      return res.status(400).json({
+        error:
+          "Missing required fields: itemName, startingPrice, endTime, userId",
+      });
     }
 
     const price = parseFloat(startingPrice);
@@ -162,7 +163,12 @@ router.post("/", async (req, res) => {
       `[Auction] Created: ${auction.auctionId} — "${itemName}" by ${userId}`,
     );
 
-    req.io.emit("auction-created", { auction });
+    // 🔥 Broadcast auction-created to ALL clients (public, so global is OK)
+    // This is different from room-specific events
+    if (req.io) {
+      req.io.emit("auction-created", { auction });
+      console.log(`[Auction] Broadcasted auction-created event`);
+    }
     res.status(201).json({ auction });
   } catch (err) {
     console.error("[Auction] Create error:", err.message);

@@ -48,6 +48,7 @@ export const uploadAPI = {
     const formData = new FormData();
     formData.append("image", file);
     return api.post("/upload", formData, {
+      // Note: backend now returns absolute URLs in imagePath field
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
@@ -63,7 +64,8 @@ export const loadTestAPI = {
 // ─── Server Info API ──────────────────────────────────────────
 export const serverAPI = {
   getInfo: () => api.get("/server-info"),
-  health: () => axios.get("/health"),
+  getAllServersStatus: () => api.get("/internal/all-servers-status"),
+  health: () => api.get("/health"),
 };
 
 export default api;

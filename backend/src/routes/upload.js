@@ -1,12 +1,12 @@
 // ─── Image Upload Route ───────────────────────────────────────
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const router = express.Router();
 
 // Ensure /uploads directory exists
-const uploadsDir = path.join(__dirname, '../../uploads');
+const uploadsDir = path.join(__dirname, "../../uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -24,11 +24,20 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedMimeTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+  ];
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'));
+    cb(
+      new Error(
+        "Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.",
+      ),
+    );
   }
 };
 
@@ -39,18 +48,24 @@ const upload = multer({
 });
 
 // POST /api/upload — Upload an auction image
-router.post('/', upload.single('image'), (req, res) => {
+router.post("/", upload.single("image"), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
+    return res.status(400).json({ error: "No file uploaded" });
   }
 
-  const imagePath = `/uploads/${req.file.filename}`;
-  console.log(`[Upload] Image saved: ${imagePath}`);
+  // 🔥 Store ONLY relative path (frontend reconstructs full URL from window.location)
+  const relativePath = `/uploads/${req.file.filename}`;
+
+  console.log(`[Upload] Image saved: ${relativePath}`);
+  console.log(
+    `  [Upload] Server: ${process.env.SERVER_ID}, File: ${req.file.filename}, Size: ${req.file.size}B`,
+  );
 
   res.json({
-    imagePath,
+    imagePath: relativePath, // ← Store ONLY relative path
     filename: req.file.filename,
     size: req.file.size,
+    message: "Image uploaded successfully",
   });
 });
 

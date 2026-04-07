@@ -151,7 +151,15 @@ router.post("/", bidRateLimiter, async (req, res) => {
 
     // 🔥 Broadcast to ROOM only (not global)
     // Room format must match: auction:${auctionId}
-    req.io.to(`auction:${auctionId}`).emit("new-bid", {
+    // With Redis adapter: broadcast reaches ALL servers' clients in this room
+    const roomName = `auction:${auctionId}`;
+    console.log(
+      `[Bid][Leader][Server ${SERVER_ID}] 📢 Broadcasting new-bid to room ${roomName}: $${bidAmount}`,
+    );
+    console.log(
+      `  Event sent to: ${req.io.sockets.adapter.rooms.get(roomName)?.size || 0} local sockets (Redis bridges to other servers)`,
+    );
+    req.io.to(roomName).emit("new-bid", {
       auctionId,
       bid: bid.toObject(),
       currentHighestBid: bidAmount,

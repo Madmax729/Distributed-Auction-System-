@@ -89,26 +89,36 @@ export default function AdminPage() {
   }, []);
 
   const fetchServerStatuses = async () => {
-    const statuses = {};
-    await Promise.allSettled(
-      SERVER_IDS.map(async (id) => {
-        try {
-          const res = await axios.get("http://localhost/health", {
-            timeout: 2000,
-            headers: { "x-target-server": id },
-          });
-          statuses[id] = { online: true, ...res.data };
-        } catch {
-          statuses[id] = { online: false, serverId: id };
-        }
-      }),
-    );
     try {
-      const res = await serverAPI.getInfo();
-      setSystemInfo(res.data);
-      statuses[parseInt(res.data.serverId)] = { online: true, ...res.data };
-    } catch {}
-    setServerStatuses(statuses);
+      // 🔥 Fetch ALL server statuses from internal endpoint in one call
+      // This avoids NGINX load-balancing issues where each request goes to a different server
+      const res = await axios.get("/api/internal/all-servers-status");
+      const statuses = {};
+
+      // Map returned server statuses to our tracking object
+      Object.entries(res.data.servers || {}).forEach(
+        ([serverId, serverStatus]) => {
+          statuses[serverId] = serverStatus;
+        },
+      );
+
+      // Also try to get system info from current server
+      try {
+        const infoRes = await axios.get("/api/server-info", { timeout: 2000 });
+        setSystemInfo(infoRes.data);
+      } catch (err) {
+        // Silently skip if we can't get system info
+      }
+
+      setServerStatuses(statuses);
+    } catch (err) {
+      console.error(
+        "[AdminPage] Failed to fetch server statuses:",
+        err.message,
+      );
+      // Don't break UI - just show empty statuses
+      setServerStatuses({});
+    }
   };
 
   const startLoadTest = async () => {

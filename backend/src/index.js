@@ -12,6 +12,8 @@ require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createClient } = require("redis");
 const cors = require("cors");
 const morgan = require("morgan");
 const path = require("path");
@@ -34,7 +36,28 @@ const loadTestRoutes = require("./routes/loadtest");
 const app = express();
 const server = http.createServer(app);
 
+// ─── Redis Setup (for Socket.io adapter) ──────────────────────
+// 🔥 CRITICAL: Redis allows Socket.io to share rooms/messages across all server instances
+const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
+const pubClient = createClient({ url: REDIS_URL });
+const subClient = pubClient.duplicate();
+
+let redisConnected = false;
+
+Promise.all([pubClient.connect(), subClient.connect()])
+  .then(() => {
+    redisConnected = true;
+    console.log("[Redis] ✅ Connected to Redis at", REDIS_URL);
+  })
+  .catch((err) => {
+    console.error("[Redis] ❌ Connection failed:", err.message);
+    console.warn(
+      "[Redis] WARNING: Falling back to in-memory Socket.io (single-server only)",
+    );
+  });
+
 // ─── Socket.io Configuration (Ngrok + NGINX Compatible) ────────
+// 🔥 With Redis adapter: all servers share rooms + events
 const io = new Server(server, {
   cors: {
     origin: "*", // Accept all origins (safe with NGINX proxy validation)
@@ -57,6 +80,19 @@ const io = new Server(server, {
   // ─── Trust proxy headers from NGINX ──────────────────────────
   trustProxy: true, // Trust X-Forwarded-For, X-Real-IP from NGINX
 });
+
+// 🔥 CRITICAL: Attach Redis adapter to Socket.io
+// This ensures all server instances share rooms and broadcast messages
+if (redisConnected) {
+  console.log(
+    "[Socket.io] 🔌 Attaching Redis adapter for cross-server synchronization",
+  );
+  io.adapter(createAdapter(pubClient, subClient));
+} else {
+  console.warn(
+    "[Socket.io] ⚠️  Running without Redis adapter (single-server mode only)",
+  );
+}
 
 // ─── Make io accessible globally and via req (MUST be first!) ──
 global.io = io;
@@ -119,18 +155,38 @@ app.get("/api/server-info", (req, res) => {
 
 // ─── Socket.io Connection Handling ───────────────────────────
 io.on("connection", (socket) => {
-  console.log(`[Socket.io] Client connected: ${socket.id}`);
+  const socketServer = process.env.SERVER_ID || "1";
+  console.log(
+    `[Socket.io][Server ${socketServer}] 🔌 Client connected: ${socket.id}`,
+  );
+  console.log(
+    `  Total connected clients: ${Object.keys(io.sockets.sockets).length}`,
+  );
+  if (redisConnected) {
+    console.log(`  ✅ Redis adapter active - events broadcast to all servers`);
+  }
 
   socket.on("join-auction", (roomName) => {
     // roomName format: auction:${auctionId}
     socket.join(roomName);
-    console.log(`[Socket.io] Client ${socket.id} joined room: ${roomName}`);
+    console.log(
+      `[Socket.io][Server ${socketServer}] ✅ Client ${socket.id} joined room: ${roomName}`,
+    );
+    const roomSize = io.sockets.adapter.rooms.get(roomName)?.size || 0;
+    console.log(
+      `  Sockets in room ${roomName}: ${roomSize} (Redis adapter: ${redisConnected ? "enabled" : "disabled"})`,
+    );
   });
 
   socket.on("leave-auction", (roomName) => {
     // roomName format: auction:${auctionId}
     socket.leave(roomName);
-    console.log(`[Socket.io] Client ${socket.id} left room: ${roomName}`);
+    console.log(
+      `[Socket.io][Server ${socketServer}] ❌ Client ${socket.id} left room: ${roomName}`,
+    );
+    console.log(
+      `  Sockets in room ${roomName}: ${io.sockets.adapter.rooms.get(roomName)?.size || 0}`,
+    );
   });
 
   socket.on("disconnect", () => {

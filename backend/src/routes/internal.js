@@ -11,6 +11,7 @@ const router = express.Router();
 const {
   handleElectionMessage,
   getLeaderState,
+  getPeerServers,
 } = require("../distributed/leaderElection");
 const { applyReplicatedBid } = require("../distributed/replication");
 const { updateClock, getLamportClock } = require("../distributed/lamportClock");
@@ -49,9 +50,16 @@ router.post("/replicate-bid", async (req, res) => {
     const success = await applyReplicatedBid(bid, auction, lamportTimestamp);
 
     if (success) {
-      // Broadcast to clients connected to this follower
+      // Broadcast to clients connected to this follower (and via Redis to ALL servers)
+      const roomName = `auction:${bid.auctionId}`;
+      console.log(
+        `[Replication][Server ${SERVER_ID}] ✅ Applied replicated bid. Broadcasting to room ${roomName}`,
+      );
+      console.log(
+        `  Event sent to: ${global.io?.sockets.adapter.rooms.get(roomName)?.size || 0} local sockets (Redis bridges to other servers)`,
+      );
       if (global.io) {
-        global.io.to(`auction:${bid.auctionId}`).emit("new-bid", {
+        global.io.to(roomName).emit("new-bid", {
           auctionId: bid.auctionId,
           bid,
           currentHighestBid: auction.currentHighestBid,
@@ -101,6 +109,62 @@ router.post("/leader-election", async (req, res) => {
   } catch (err) {
     console.error(
       `[Internal][Server ${SERVER_ID}] Election error:`,
+      err.message,
+    );
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/internal/all-servers-status ────────────────────
+// Fetch status of all peer servers (for Admin page)
+// Returns current server status + all peers' health
+router.get("/all-servers-status", async (req, res) => {
+  try {
+    const state = getLeaderState();
+    const peers = getPeerServers();
+    const statusMap = {};
+
+    // Add current server status
+    statusMap[SERVER_ID] = {
+      serverId: SERVER_ID,
+      isLeader: state.isLeader,
+      currentLeader: state.currentLeader,
+      lamportClock: getLamportClock(),
+      port: process.env.PORT,
+      online: true,
+    };
+
+    // Fetch status from all peer servers in parallel
+    await Promise.allSettled(
+      peers.map(async (peer) => {
+        try {
+          const res = await require("axios").get(
+            `${peer.url}/api/server-info`,
+            {
+              timeout: 2000,
+            },
+          );
+          statusMap[peer.id] = {
+            ...res.data,
+            online: true,
+          };
+        } catch (err) {
+          statusMap[peer.id] = {
+            serverId: peer.id,
+            online: false,
+            error: err.message,
+          };
+        }
+      }),
+    );
+
+    res.json({
+      servers: statusMap,
+      queryTime: Date.now(),
+    });
+  } catch (err) {
+    console.error(
+      `[Internal][Server ${SERVER_ID}] All servers status error:`,
       err.message,
     );
     res.status(500).json({ error: err.message });

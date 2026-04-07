@@ -12,6 +12,17 @@ import AuctionStats from "../components/AuctionStats";
 import toast from "react-hot-toast";
 import { formatDistanceToNow, format } from "date-fns";
 
+// 🔥 Helper: Construct full image URL from relative path
+const getImageUrl = (imagePath) => {
+  if (!imagePath) return null;
+  // If already a full URL (http/https), return as-is
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  // If relative path, prepend current window origin
+  return `${window.location.origin}${imagePath}`;
+};
+
 export default function AuctionPage({ user }) {
   const { auctionId } = useParams();
   const navigate = useNavigate();
@@ -58,8 +69,24 @@ export default function AuctionPage({ user }) {
       console.log("🔥 RECEIVED BID:", data);
 
       setBids((prev) => {
-        const exists = prev.find((b) => b.bidId === data.bid.bidId);
-        if (exists) return prev; // prevent duplicates
+        // 🔥 FIX: Match by bidId OR by userId+amount (to catch optimistic updates)
+        // Remove temporary bids and replace with confirmed server bid
+        const tempBidIndex = prev.findIndex(
+          (b) =>
+            b.bidId === data.bid.bidId || // Exact match (already confirmed)
+            (b.userId === data.bid.userId && b.amount === data.bid.amount), // Optimistic match (user placed it)
+        );
+
+        if (tempBidIndex !== -1) {
+          // Replace temp bid with real bid, or skip if already there
+          if (prev[tempBidIndex].bidId === data.bid.bidId) return prev; // Already confirmed
+          return [
+            data.bid,
+            ...prev.slice(0, tempBidIndex),
+            ...prev.slice(tempBidIndex + 1),
+          ];
+        }
+
         return [data.bid, ...prev];
       });
 
@@ -333,7 +360,7 @@ export default function AuctionPage({ user }) {
                 style={{
                   height: 240,
                   borderRadius: 10,
-                  background: `url(${auction.imagePath}) center/cover`,
+                  background: `url(${getImageUrl(auction.imagePath)}) center/cover`,
                   marginBottom: 22,
                   border: "1px solid var(--border)",
                 }}

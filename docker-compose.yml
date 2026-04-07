@@ -6,8 +6,26 @@ networks:
 
 volumes:
   uploads-data:
+  redis-data:
 
 services:
+  # ─── Redis (for Socket.io cross-server synchronization) ──────
+  redis:
+    image: redis:7-alpine
+    container_name: auction-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - auction-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   # ─── Backend Server 1 ─────────────────────────────────────
   server1:
     build:
@@ -23,10 +41,14 @@ services:
       IS_LEADER: "false"
       PEER_SERVERS: "http://server2:3002,http://server3:3003,http://server4:3004"
       MONGO_URI: ${MONGO_URI}
+      REDIS_URL: "redis://redis:6379"
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    depends_on:
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -45,10 +67,14 @@ services:
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server3:3003,http://server4:3004"
       MONGO_URI: ${MONGO_URI}
+      REDIS_URL: "redis://redis:6379"
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    depends_on:
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -67,10 +93,14 @@ services:
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server4:3004"
       MONGO_URI: ${MONGO_URI}
+      REDIS_URL: "redis://redis:6379"
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    depends_on:
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -89,10 +119,14 @@ services:
       IS_LEADER: "false"
       PEER_SERVERS: "http://server1:3001,http://server2:3002,http://server3:3003"
       MONGO_URI: ${MONGO_URI}
+      REDIS_URL: "redis://redis:6379"
     volumes:
       - uploads-data:/app/uploads
     networks:
       - auction-network
+    depends_on:
+      redis:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -104,23 +138,15 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./frontend/dist:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # ─── Mount frontend dist directory for static files serving ───
       - ./frontend/dist:/usr/share/nginx/html:ro
-      # ─── Mount uploads for public access ───────────────────────
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ─── Mount uploads volume so NGINX can serve images ───────────
       - uploads-data:/app/uploads:ro
     networks:
       - auction-network
     depends_on:
+      - redis
       - server1
       - server2
       - server3
       - server4
-    healthcheck:
-      test:
-        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
