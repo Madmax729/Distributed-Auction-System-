@@ -1,21 +1,63 @@
-import { useState, useEffect } from 'react';
-import { serverAPI, loadTestAPI } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { serverAPI, loadTestAPI, auctionAPI } from '../services/api';
 import { getSocket } from '../services/socket';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
 const SERVER_IDS = [1, 2, 3, 4];
 
+// ─── Helpers for sessionStorage persistence ──────────────────
+function loadSession(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+}
+function saveSession(key, value) {
+  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export default function AdminPage() {
   const [serverStatuses,  setServerStatuses]  = useState({});
-  const [loadTestConfig,  setLoadTestConfig]  = useState({ vus: 10, duration: '30s', auctionId: '' });
+  const [loadTestConfig,  setLoadTestConfig]  = useState(() =>
+    loadSession('admin:loadTestConfig', { vus: 10, duration: '30s', auctionId: '' })
+  );
   const [loadTestRunning, setLoadTestRunning] = useState(false);
-  const [loadTestOutput,  setLoadTestOutput]  = useState([]);
+  const [loadTestOutput,  setLoadTestOutput]  = useState(() =>
+    loadSession('admin:loadTestOutput', [])
+  );
   const [systemInfo,      setSystemInfo]      = useState(null);
-  const [leaderLog,       setLeaderLog]       = useState([]);
+  const [leaderLog,       setLeaderLog]       = useState(() =>
+    loadSession('admin:leaderLog', [])
+  );
+
+  // Auction lookup state
+  const [lookupId,       setLookupId]       = useState(() =>
+    loadSession('admin:lookupId', '')
+  );
+  const [lookupAuction,  setLookupAuction]  = useState(() =>
+    loadSession('admin:lookupAuction', null)
+  );
+  const [lookupBids,     setLookupBids]     = useState(() =>
+    loadSession('admin:lookupBids', [])
+  );
+  const [lookupLoading,  setLookupLoading]  = useState(false);
+  const [lookupError,    setLookupError]    = useState('');
+
+  // Ngrok URL
+  const [ngrokUrl, setNgrokUrl] = useState('');
+
+  // Persist state changes
+  useEffect(() => { saveSession('admin:loadTestConfig', loadTestConfig); }, [loadTestConfig]);
+  useEffect(() => { saveSession('admin:loadTestOutput', loadTestOutput); }, [loadTestOutput]);
+  useEffect(() => { saveSession('admin:leaderLog', leaderLog); }, [leaderLog]);
+  useEffect(() => { saveSession('admin:lookupId', lookupId); }, [lookupId]);
+  useEffect(() => { saveSession('admin:lookupAuction', lookupAuction); }, [lookupAuction]);
+  useEffect(() => { saveSession('admin:lookupBids', lookupBids); }, [lookupBids]);
 
   useEffect(() => {
     fetchServerStatuses();
+    fetchNgrokUrl();
     const interval = setInterval(fetchServerStatuses, 5000);
     const socket = getSocket();
 
@@ -57,6 +99,35 @@ export default function AdminPage() {
       toast.success(`Load test complete (exit code: ${data.code})`);
     });
 
+    // Live bid updates for the looked-up auction
+    socket.on('new-bid', (data) => {
+      setLookupAuction(prev => {
+        if (!prev || prev.auctionId !== data.auctionId) return prev;
+        return {
+          ...prev,
+          currentHighestBid: data.currentHighestBid,
+          highestBidder: data.highestBidder,
+          highestBidderName: data.highestBidderName,
+          bidCount: data.bidCount ?? (prev.bidCount || 0) + 1,
+        };
+      });
+      setLookupBids(prev => {
+        if (!prev.length && !data.bid) return prev;
+        // Only add if it's for our looked-up auction
+        if (lookupAuction && lookupAuction.auctionId === data.auctionId) {
+          return [data.bid, ...prev.filter(b => b.bidId !== data.bid.bidId)].slice(0, 20);
+        }
+        return prev;
+      });
+    });
+
+    socket.on('auction-ended', (data) => {
+      setLookupAuction(prev => {
+        if (!prev || prev.auctionId !== data.auctionId) return prev;
+        return { ...prev, status: 'ENDED', highestBidder: data.winner, highestBidderName: data.winnerName };
+      });
+    });
+
     return () => {
       clearInterval(interval);
       socket.off('leader-changed');
@@ -64,8 +135,22 @@ export default function AdminPage() {
       socket.off('server-status');
       socket.off('load-test-output');
       socket.off('load-test-complete');
+      socket.off('new-bid');
+      socket.off('auction-ended');
     };
   }, []);
+
+  const fetchNgrokUrl = async () => {
+    try {
+      const res = await axios.get('http://localhost:4040/api/tunnels', { timeout: 3000 });
+      const tunnel = res.data?.tunnels?.find(t => t.proto === 'https') || res.data?.tunnels?.[0];
+      if (tunnel?.public_url) {
+        setNgrokUrl(tunnel.public_url);
+      }
+    } catch {
+      // ngrok may not be running
+    }
+  };
 
   const fetchServerStatuses = async () => {
     const statuses = {};
@@ -108,6 +193,33 @@ export default function AdminPage() {
     } catch { toast.error('Failed to stop load test'); }
   };
 
+  // ─── Auction Lookup ────────────────────────────────────────
+  const handleLookup = async (e) => {
+    e?.preventDefault();
+    const id = lookupId.trim();
+    if (!id) { toast.error('Enter an auction ID'); return; }
+    try {
+      setLookupLoading(true);
+      setLookupError('');
+      const res = await auctionAPI.getById(id);
+      setLookupAuction(res.data.auction);
+      setLookupBids(res.data.bids || []);
+      toast.success('Auction found');
+    } catch (err) {
+      setLookupError(err.response?.data?.error || 'Auction not found');
+      setLookupAuction(null);
+      setLookupBids([]);
+      toast.error('Auction not found');
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Copied to clipboard!');
+  };
+
   return (
     <div className="container" style={{ paddingTop: 44, paddingBottom: 96 }}>
 
@@ -123,6 +235,29 @@ export default function AdminPage() {
         <p style={{ color: 'var(--text-3)', fontSize: 13 }}>
           Monitor server health, trigger load tests, and observe distributed system behavior.
         </p>
+
+        {/* Ngrok URL */}
+        {ngrokUrl && (
+          <div style={{
+            marginTop: 14, padding: '10px 14px',
+            background: 'var(--green-dim)',
+            border: '1px solid var(--green-border)',
+            borderRadius: 8, fontSize: 12,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ color: 'var(--green)', fontWeight: 700 }}>🌐 Ngrok URL:</span>
+            <code style={{
+              color: 'var(--text-1)', background: 'var(--bg-inset)',
+              padding: '2px 8px', borderRadius: 4, fontSize: 12,
+              flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{ngrokUrl}</code>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => copyToClipboard(ngrokUrl)}
+              style={{ flexShrink: 0, fontSize: 11 }}
+            >Copy</button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignItems: 'start' }}>
@@ -168,11 +303,141 @@ export default function AdminPage() {
             </div>
           </div>
 
+          {/* ── Auction Lookup ────────────────────────────────── */}
+          <div className="glass-card" style={{ padding: 24 }}>
+            <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 4, color: 'var(--text-1)' }}>
+              Auction Lookup
+            </h2>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 16, lineHeight: 1.6 }}>
+              Enter an auction ID to view its live details and bid activity.
+            </p>
+
+            <form onSubmit={handleLookup} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <input
+                id="auction-lookup-input"
+                className="input-field"
+                type="text"
+                placeholder="Paste auction ID here"
+                value={lookupId}
+                onChange={(e) => setLookupId(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={lookupLoading}
+                style={{ flexShrink: 0 }}
+              >
+                {lookupLoading ? 'Loading…' : 'Lookup'}
+              </button>
+            </form>
+
+            {lookupError && (
+              <div style={{
+                padding: '10px 14px', borderRadius: 8,
+                background: 'var(--red-dim)', border: '1px solid rgba(248,113,113,0.22)',
+                fontSize: 12, color: 'var(--red)', marginBottom: 12,
+              }}>
+                {lookupError}
+              </div>
+            )}
+
+            {lookupAuction && (
+              <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                {/* Auction details card */}
+                <div style={{
+                  padding: 18, borderRadius: 10,
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--border)',
+                  marginBottom: 14,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Space Grotesk', marginBottom: 4 }}>
+                        {lookupAuction.itemName}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span className={`badge ${lookupAuction.status === 'ONGOING' ? 'badge-ongoing' : 'badge-ended'}`}
+                          style={{ fontSize: 10, padding: '2px 8px' }}>
+                          {lookupAuction.status === 'ONGOING' ? '● LIVE' : 'ENDED'}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{lookupAuction.category}</span>
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => copyToClipboard(lookupAuction.auctionId)}
+                      style={{ fontSize: 10 }}
+                      title="Copy auction ID"
+                    >ID 📋</button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div style={{ padding: '10px 12px', background: 'var(--amber-dim)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 3 }}>Current Bid</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--amber)', fontFamily: 'Space Grotesk' }}>
+                        ${lookupAuction.currentHighestBid?.toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{ padding: '10px 12px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 8 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 3 }}>Highest Bidder</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-light)', fontFamily: 'Space Grotesk' }}>
+                        {lookupAuction.highestBidderName || '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 11, color: 'var(--text-3)' }}>
+                    <span>Bids: <strong style={{ color: 'var(--text-2)' }}>{lookupAuction.bidCount || 0}</strong></span>
+                    <span>Starting: <strong style={{ color: 'var(--text-2)' }}>${lookupAuction.startingPrice}</strong></span>
+                    <span>By: <strong style={{ color: 'var(--text-2)' }}>{lookupAuction.createdByName}</strong></span>
+                  </div>
+                </div>
+
+                {/* Recent bids */}
+                {lookupBids.length > 0 && (
+                  <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>
+                      Recent Bids ({lookupBids.length})
+                    </div>
+                    {lookupBids.slice(0, 10).map((bid, i) => (
+                      <div key={bid.bidId || i} style={{
+                        padding: '6px 10px', borderRadius: 6,
+                        background: i === 0 ? 'var(--amber-dim)' : 'var(--bg-raised)',
+                        border: `1px solid ${i === 0 ? 'rgba(245,158,11,0.18)' : 'var(--border)'}`,
+                        fontSize: 12, color: 'var(--text-2)',
+                        display: 'flex', justifyContent: 'space-between',
+                      }}>
+                        <span>
+                          <strong style={{ color: i === 0 ? 'var(--amber)' : 'var(--text-1)' }}>
+                            ${bid.amount?.toLocaleString()}
+                          </strong>
+                          {' by '}
+                          <span style={{ color: 'var(--accent-light)' }}>{bid.userName}</span>
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                          L:{bid.lamportTimestamp} S{bid.serverId}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Event Log */}
           <div className="glass-card" style={{ padding: 24 }}>
-            <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, marginBottom: 16, color: 'var(--text-1)' }}>
-              System Event Log
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 15, fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700, color: 'var(--text-1)' }}>
+                System Event Log
+              </h2>
+              {leaderLog.length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setLeaderLog([])} style={{ fontSize: 10 }}>
+                  Clear
+                </button>
+              )}
+            </div>
 
             <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {leaderLog.length === 0 ? (
@@ -219,6 +484,9 @@ export default function AdminPage() {
                   onChange={(e) => setLoadTestConfig(prev => ({ ...prev, auctionId: e.target.value }))}
                   disabled={loadTestRunning}
                 />
+                <span style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4, display: 'block' }}>
+                  Leave empty to auto-create a test auction
+                </span>
               </div>
 
               <div className="form-group">
@@ -313,9 +581,14 @@ export default function AdminPage() {
           {/* k6 Output */}
           {loadTestOutput.length > 0 && (
             <div className="glass-card" style={{ padding: 18 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--green)' }}>
-                k6 Output
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
+                  k6 Output
+                </h3>
+                <button className="btn btn-ghost btn-sm" onClick={() => setLoadTestOutput([])} style={{ fontSize: 10 }}>
+                  Clear
+                </button>
+              </div>
               <div style={{
                 maxHeight: 200, overflowY: 'auto',
                 fontFamily: 'monospace', fontSize: 11,
@@ -428,6 +701,7 @@ function ServerCard({ serverId, status = { online: false }, systemInfo }) {
           <InfoRow label="Uptime" value={status.uptime ? `${Math.floor(status.uptime)}s` : '—'} />
           <InfoRow label="Lamport" value={status.lamportClock ?? '—'} />
           <InfoRow label="Leader" value={status.currentLeader ? `S${status.currentLeader}` : '?'} />
+          <InfoRow label="Redis" value={status.redisReady ? '✅' : '❌'} />
         </div>
       )}
 

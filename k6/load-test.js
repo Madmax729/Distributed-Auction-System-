@@ -6,13 +6,12 @@
 //
 // Environment variables:
 //   BASE_URL   — Backend URL (default: http://localhost:80)
-//   AUCTION_ID — Target auction ID (optional)
+//   AUCTION_ID — Target auction ID (optional, auto-creates if empty)
 // ============================================================
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
-import ws from 'k6/ws';
 
 // ─── Custom Metrics ─────────────────────────────────────────
 const bidSuccessCounter = new Counter('bids_successful');
@@ -37,22 +36,24 @@ let AUCTION_ID = __ENV.AUCTION_ID || '';
 // ─── Setup: Create a shared auction if none provided ─────────
 export function setup() {
   if (AUCTION_ID) {
+    console.log(`[k6 Setup] Using existing auction: ${AUCTION_ID}`);
     return { auctionId: AUCTION_ID };
   }
 
   // Create a test auction
-  const userId = `loadtest-setup`;
-  const endTime = new Date(Date.now() + 300000).toISOString(); // 5 min from now
+  const userId = `loadtest-setup-${Date.now()}`;
+  const endTime = new Date(Date.now() + 600000).toISOString(); // 10 min from now
 
   const res = http.post(
     `${BASE_URL}/api/auctions`,
     JSON.stringify({
-      itemName: 'k6 Load Test Item',
-      description: 'Auto-created by k6 load test',
+      itemName: `k6 Load Test — ${new Date().toLocaleTimeString()}`,
+      description: 'Auto-created by k6 load test for stress testing distributed bidding',
       startingPrice: 100,
       endTime,
       userId,
-      userName: 'LoadTest Setup',
+      userName: 'k6 LoadTest Bot',
+      category: 'Other',
     }),
     { headers: { 'Content-Type': 'application/json' } }
   );
@@ -76,8 +77,10 @@ export default function main(data) {
     return;
   }
 
-  const userId = `vu-${__VU}-${Date.now()}`;
-  const userName = `Virtual User ${__VU}`;
+  // Each VU gets a unique, stable userId based on VU number
+  // __ITER increments per iteration, so each bid within a VU is also unique
+  const userId = `k6-vu-${__VU}`;
+  const userName = `VU-${__VU}`;
 
   // Step 1: Join the auction
   const joinRes = http.post(
@@ -166,5 +169,5 @@ export default function main(data) {
 
 // ─── Teardown ─────────────────────────────────────────────────
 export function teardown(data) {
-  console.log('[k6 Teardown] Load test complete');
+  console.log(`[k6 Teardown] Load test complete. Auction ID: ${data.auctionId}`);
 }

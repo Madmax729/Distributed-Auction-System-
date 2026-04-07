@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Navbar from './components/Navbar';
+import ServerStatusBanner from './components/ServerStatusBanner';
 import HomePage from './pages/HomePage';
 import AuctionPage from './pages/AuctionPage';
 import CreateAuctionPage from './pages/CreateAuctionPage';
@@ -48,6 +49,7 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
+      <ServerStatusBanner />
       <Navbar user={user} onChangeUser={() => setShowSetup(true)} theme={theme} toggleTheme={toggleTheme} />
 
       <main style={{ paddingTop: '60px' }}>

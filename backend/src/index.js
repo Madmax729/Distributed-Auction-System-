@@ -6,6 +6,7 @@
 //   - Bully Algorithm leader election
 //   - Lamport logical clocks for bid ordering
 //   - Socket.io real-time broadcasting
+//   - Redis caching for fast bid/auction lookups
 // ============================================================
 
 require('dotenv').config();
@@ -17,6 +18,7 @@ const morgan = require('morgan');
 const path = require('path');
 
 const connectDB = require('./config/database');
+const { connectRedis, isRedisReady } = require('./config/redisClient');
 const { initHeartbeat } = require('./distributed/heartbeat');
 const { initLeaderElection, getLeaderState } = require('./distributed/leaderElection');
 const { getLamportClock } = require('./distributed/lamportClock');
@@ -75,6 +77,7 @@ app.get('/health', (req, res) => {
     isLeader: state.isLeader,
     currentLeader: state.currentLeader,
     lamportClock: getLamportClock(),
+    redisReady: isRedisReady(),
     timestamp: Date.now(),
   });
 });
@@ -89,6 +92,7 @@ app.get('/api/server-info', (req, res) => {
     port: process.env.PORT,
     uptime: process.uptime(),
     lamportClock: getLamportClock(),
+    redisReady: isRedisReady(),
   });
 });
 
@@ -119,6 +123,14 @@ async function start() {
     // Connect to MongoDB — throws on failure so we don't start without a DB
     await connectDB();
     console.log(`[Server ${SERVER_ID}] Connected to MongoDB ✅`);
+
+    // Connect to Redis (non-blocking — continues without cache if unavailable)
+    try {
+      connectRedis();
+      console.log(`[Server ${SERVER_ID}] Redis client initialized`);
+    } catch (err) {
+      console.warn(`[Server ${SERVER_ID}] Redis unavailable — running without cache: ${err.message}`);
+    }
 
     // Start HTTP server on all interfaces (0.0.0.0 for Docker + LAN)
     server.listen(PORT, '0.0.0.0', () => {

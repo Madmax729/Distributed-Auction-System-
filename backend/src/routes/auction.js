@@ -6,6 +6,7 @@ const router = express.Router();
 const Auction = require('../models/Auction');
 const Bid = require('../models/Bid');
 const User = require('../models/User');
+const { getCache, setCache, invalidateCache } = require('../config/redisClient');
 
 // ─── Helper: auto-end expired auctions ───────────────────────
 const autoEndExpired = async (io) => {
@@ -24,6 +25,10 @@ const autoEndExpired = async (io) => {
       await Bid.updateOne({ bidId: winningBid.bidId }, { isWinner: true });
     }
     await auction.save();
+
+    // Invalidate caches
+    await invalidateCache(`auction:${auction.auctionId}`);
+    await invalidateCache('auctions:list:*');
 
     if (io) {
       io.emit('auction-ended', {
@@ -44,8 +49,17 @@ router.get('/', async (req, res) => {
     await autoEndExpired(req.io);
 
     const { status, category, search, limit = 50 } = req.query;
-    const query = {};
 
+    // Try Redis cache first (only for non-search queries)
+    if (!search) {
+      const cacheKey = `auctions:list:${status || 'ALL'}:${category || 'ALL'}:${limit}`;
+      const cached = await getCache(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+    }
+
+    const query = {};
     if (status && status !== 'ALL') query.status = status;
     if (category && category !== 'ALL') query.category = category;
     if (search) {
@@ -59,7 +73,15 @@ router.get('/', async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit));
 
-    res.json({ auctions });
+    const result = { auctions };
+
+    // Cache for 2 seconds (non-search only)
+    if (!search) {
+      const cacheKey = `auctions:list:${status || 'ALL'}:${category || 'ALL'}:${limit}`;
+      await setCache(cacheKey, result, 2);
+    }
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -68,23 +90,41 @@ router.get('/', async (req, res) => {
 // ─── GET /api/auctions/:auctionId — Get auction details ──────
 router.get('/:auctionId', async (req, res) => {
   try {
-    const auction = await Auction.findOne({ auctionId: req.params.auctionId });
+    const { auctionId } = req.params;
+
+    // Try Redis cache
+    const cacheKey = `auction:${auctionId}`;
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      // Still check if expired
+      if (cached.auction?.status === 'ONGOING' && new Date() >= new Date(cached.auction.endTime)) {
+        await invalidateCache(cacheKey);
+      } else {
+        return res.json(cached);
+      }
+    }
+
+    const auction = await Auction.findOne({ auctionId });
     if (!auction) return res.status(404).json({ error: 'Auction not found' });
 
     // Auto-end if expired
     if (auction.status === 'ONGOING' && new Date() >= auction.endTime) {
       await autoEndExpired(req.io);
-      const updated = await Auction.findOne({ auctionId: req.params.auctionId });
-      const bids = await Bid.find({ auctionId: req.params.auctionId })
+      const updated = await Auction.findOne({ auctionId });
+      const bids = await Bid.find({ auctionId })
         .sort({ lamportTimestamp: -1, serverId: 1 }).limit(50);
-      return res.json({ auction: updated, bids });
+      const result = { auction: updated, bids };
+      await setCache(cacheKey, result, 3);
+      return res.json(result);
     }
 
-    const bids = await Bid.find({ auctionId: req.params.auctionId })
+    const bids = await Bid.find({ auctionId })
       .sort({ lamportTimestamp: -1, serverId: 1 })
       .limit(50);
 
-    res.json({ auction, bids });
+    const result = { auction, bids };
+    await setCache(cacheKey, result, 1); // 1s TTL for active auctions
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -138,6 +178,9 @@ router.post('/', async (req, res) => {
 
     await auction.save();
     console.log(`[Auction] Created: ${auction.auctionId} — "${itemName}" by ${userId}`);
+
+    // Invalidate list cache
+    await invalidateCache('auctions:list:*');
 
     req.io.emit('auction-created', { auction });
     res.status(201).json({ auction });
@@ -202,6 +245,10 @@ router.post('/:auctionId/end', async (req, res) => {
     await auction.save();
     console.log(`[Auction] Ended: ${auctionId}. Winner: ${auction.highestBidder || 'none'}`);
 
+    // Invalidate caches
+    await invalidateCache(`auction:${auctionId}`);
+    await invalidateCache('auctions:list:*');
+
     req.io.emit('auction-ended', {
       auctionId,
       winner:    auction.highestBidder,
@@ -219,6 +266,12 @@ router.post('/:auctionId/end', async (req, res) => {
 router.get('/:auctionId/stats', async (req, res) => {
   try {
     const { auctionId } = req.params;
+
+    // Try cache
+    const cacheKey = `auction:stats:${auctionId}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
+
     const auction = await Auction.findOne({ auctionId });
     if (!auction) return res.status(404).json({ error: 'Auction not found' });
 
@@ -228,14 +281,17 @@ router.get('/:auctionId/stats', async (req, res) => {
       Bid.findOne({ auctionId }).sort({ amount: -1 }),
     ]);
 
-    res.json({
+    const result = {
       bidCount,
       uniqueBidders: uniqueBidders.length,
       highestBid: highestBid?.amount || auction.startingPrice,
       priceIncrease: highestBid
         ? (((highestBid.amount - auction.startingPrice) / auction.startingPrice) * 100).toFixed(1)
         : '0.0',
-    });
+    };
+
+    await setCache(cacheKey, result, 3);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

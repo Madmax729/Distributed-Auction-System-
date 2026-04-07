@@ -1,6 +1,6 @@
 // ─── Load Test Routes ─────────────────────────────────────────
 // Triggers k6 load tests programmatically via child_process.
-// k6 must be installed on the system or in the Docker container.
+// k6 must be installed in the Docker container.
 // ─────────────────────────────────────────────────────────────
 
 const express = require('express');
@@ -25,7 +25,8 @@ router.post('/start-load-test', (req, res) => {
     });
   }
 
-  const k6ScriptPath = path.join(__dirname, '../../../k6/load-test.js');
+  // k6 script is mounted at /app/k6/load-test.js via docker-compose volume
+  const k6ScriptPath = path.resolve('/app/k6/load-test.js');
 
   const env = {
     ...process.env,
@@ -34,7 +35,7 @@ router.post('/start-load-test', (req, res) => {
   };
 
   console.log(
-    `[LoadTest] Starting k6: vus=${vus}, duration=${duration}, auctionId=${auctionId}`
+    `[LoadTest] Starting k6: vus=${vus}, duration=${duration}, auctionId=${auctionId || '(auto-create)'}`
   );
 
   try {
@@ -68,6 +69,18 @@ router.post('/start-load-test', (req, res) => {
       }
     });
 
+    k6Process.on('error', (err) => {
+      activeLoadTest = null;
+      console.error('[LoadTest] k6 process error:', err.message);
+      if (global.io) {
+        global.io.emit('load-test-output', {
+          text: `Error: ${err.message}. Is k6 installed in the container?`,
+          type: 'stderr',
+        });
+        global.io.emit('load-test-complete', { code: -1, output: err.message });
+      }
+    });
+
     k6Process.on('close', (code) => {
       activeLoadTest = null;
       console.log(`[LoadTest] k6 exited with code ${code}`);
@@ -78,14 +91,14 @@ router.post('/start-load-test', (req, res) => {
 
     res.json({
       message: 'Load test started',
-      config: { vus, duration, auctionId },
+      config: { vus, duration, auctionId: auctionId || '(k6 will auto-create)' },
     });
 
   } catch (err) {
     activeLoadTest = null;
     res.status(500).json({
       error: 'Failed to start k6',
-      message: 'Make sure k6 is installed (https://k6.io/docs/getting-started/installation/)',
+      message: 'Make sure k6 is installed in the Docker container',
       details: err.message,
     });
   }

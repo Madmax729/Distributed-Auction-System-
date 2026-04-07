@@ -15,6 +15,7 @@ const { bidRateLimiter } = require('../middleware/rateLimiter');
 const { getLeaderState, getPeerServers } = require('../distributed/leaderElection');
 const { getClockForSend, updateClock } = require('../distributed/lamportClock');
 const { replicateBid } = require('../distributed/replication');
+const { setCache, invalidateCache } = require('../config/redisClient');
 
 const SERVER_ID = process.env.SERVER_ID || '1';
 
@@ -73,6 +74,8 @@ router.post('/', bidRateLimiter, async (req, res) => {
       // Auto-end auction
       auction.status = 'ENDED';
       await auction.save();
+      await invalidateCache(`auction:${auctionId}`);
+      await invalidateCache('auctions:list:*');
       req.io.emit('auction-ended', {
         auctionId,
         winner: auction.highestBidder,
@@ -127,6 +130,15 @@ router.post('/', bidRateLimiter, async (req, res) => {
       `[Bid][Leader Server ${SERVER_ID}] Accepted: $${bidAmount} by ${userId} ` +
       `on auction ${auctionId} (Lamport: ${lamportTimestamp})`
     );
+
+    // Update Redis cache immediately for fastest reads
+    await setCache(`auction:${auctionId}`, {
+      auction: auction.toObject(),
+      bids: await Bid.find({ auctionId }).sort({ lamportTimestamp: -1, serverId: 1 }).limit(50),
+    }, 2);
+    // Invalidate list cache so homepage picks up new bid data
+    await invalidateCache('auctions:list:*');
+    await invalidateCache(`auction:stats:${auctionId}`);
 
     // Broadcast real-time bid update to all clients
     req.io.emit('new-bid', {

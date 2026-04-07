@@ -10,6 +10,8 @@ export default defineConfig({
   server: {
     port: 5173,
     host: '0.0.0.0',
+    // Allow connections from ngrok and other external hosts
+    allowedHosts: 'all',
     proxy: {
       '/api': {
         target: BACKEND_URL,

@@ -57,6 +57,7 @@ export default function CreateAuctionPage({ user }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // ─── Validation ────────────────────────────────────────
     if (!user) {
       toast.error('Please set your username first');
       return;
@@ -67,20 +68,34 @@ export default function CreateAuctionPage({ user }) {
     }
 
     const price = parseFloat(form.startingPrice);
-    if (!price || price <= 0) {
-      toast.error('Starting price must be greater than 0');
+    if (isNaN(price) || price <= 0) {
+      toast.error('Starting price must be a number greater than 0');
       return;
     }
 
-    if (form.useCustomTime && !form.customEndTime) {
-      toast.error('Please pick a custom end time');
-      return;
-    }
-    if (form.useCustomTime && new Date(form.customEndTime) <= new Date()) {
-      toast.error('End time must be in the future');
-      return;
+    // ─── End Time Calculation ───────────────────────────────
+    let endTime;
+    if (form.useCustomTime) {
+      if (!form.customEndTime) {
+        toast.error('Please pick a custom end time');
+        return;
+      }
+      const customDate = new Date(form.customEndTime);
+      if (isNaN(customDate.getTime())) {
+        toast.error('Invalid end time format');
+        return;
+      }
+      if (customDate <= new Date()) {
+        toast.error('End time must be in the future');
+        return;
+      }
+      endTime = customDate.toISOString();
+    } else {
+      const minutes = parseInt(form.duration) || 60;
+      endTime = new Date(Date.now() + minutes * 60 * 1000).toISOString();
     }
 
+    // ─── Submit ─────────────────────────────────────────────
     try {
       setSubmitting(true);
 
@@ -90,22 +105,15 @@ export default function CreateAuctionPage({ user }) {
         try {
           const uploadRes = await uploadAPI.uploadImage(imageFile);
           imagePath = uploadRes.data.imagePath;
-        } catch {
+        } catch (err) {
+          console.error('[CreateAuction] Image upload error:', err);
           toast.error('Image upload failed — continuing without image');
         } finally {
           setUploading(false);
         }
       }
 
-      let endTime;
-      if (form.useCustomTime && form.customEndTime) {
-        endTime = new Date(form.customEndTime).toISOString();
-      } else {
-        const minutes = parseInt(form.duration) || 60;
-        endTime = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-      }
-
-      const res = await auctionAPI.create({
+      const payload = {
         itemName:      form.itemName.trim(),
         description:   form.description.trim(),
         category:      form.category || 'Other',
@@ -114,14 +122,22 @@ export default function CreateAuctionPage({ user }) {
         userId:    user.userId,
         userName:  user.userName,
         imagePath,
-      });
+      };
 
-      toast.success('Auction created!');
-      navigate(`/auction/${res.data.auction.auctionId}`);
+      console.log('[CreateAuction] Submitting:', payload);
+      const res = await auctionAPI.create(payload);
+
+      if (res.data?.auction?.auctionId) {
+        toast.success(`Auction created! ID: ${res.data.auction.auctionId.slice(0, 8)}…`);
+        navigate(`/auction/${res.data.auction.auctionId}`);
+      } else {
+        toast.error('Auction created but no ID returned');
+        navigate('/');
+      }
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Failed to create auction';
+      const msg = err.response?.data?.error || err.userMessage || err.message || 'Failed to create auction';
       toast.error(msg);
-      console.error('[CreateAuction]', err);
+      console.error('[CreateAuction] Error:', err);
     } finally {
       setSubmitting(false);
     }
@@ -161,7 +177,7 @@ export default function CreateAuctionPage({ user }) {
             marginBottom: 24,
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" flexShrink="0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink: 0}}>
               <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
             Set your username before creating an auction.

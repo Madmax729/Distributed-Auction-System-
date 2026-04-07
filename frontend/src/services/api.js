@@ -1,6 +1,25 @@
 // ─── API Service ─────────────────────────────────────────────
 import axios from 'axios';
 
+// Track server reachability for the banner
+let serverReachable = true;
+const reachabilityListeners = new Set();
+
+export const onServerReachabilityChange = (listener) => {
+  reachabilityListeners.add(listener);
+  listener(serverReachable);
+  return () => reachabilityListeners.delete(listener);
+};
+
+export const getServerReachable = () => serverReachable;
+
+function setReachable(value) {
+  if (serverReachable !== value) {
+    serverReachable = value;
+    reachabilityListeners.forEach(fn => fn(value));
+  }
+}
+
 const api = axios.create({
   baseURL: '/api',
   timeout: 12000,
@@ -13,6 +32,27 @@ api.interceptors.request.use((config) => {
   if (userId) config.headers['x-user-id'] = userId;
   return config;
 });
+
+// Response interceptor — track server reachability + friendly errors
+api.interceptors.response.use(
+  (response) => {
+    setReachable(true);
+    return response;
+  },
+  (error) => {
+    // Network error or no response means server is down
+    if (!error.response) {
+      setReachable(false);
+      error.userMessage = 'Server is unreachable. Please check if the backend is running.';
+    } else if (error.response.status >= 500) {
+      error.userMessage = error.response.data?.error || 'Internal server error';
+    } else {
+      // 4xx errors — server is reachable
+      setReachable(true);
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ─── Auction APIs ─────────────────────────────────────────────
 export const auctionAPI = {
@@ -51,7 +91,7 @@ export const loadTestAPI = {
 // ─── Server Info API ──────────────────────────────────────────
 export const serverAPI = {
   getInfo: () => api.get('/server-info'),
-  health:  () => axios.get('/health'),
+  health:  () => axios.get('/health', { timeout: 3000 }),
 };
 
 export default api;
