@@ -56,7 +56,9 @@ app.use((req, res, next) => {
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('combined'));
+app.use(morgan('combined', {
+  skip: (req, res) => req.url === '/health' || req.url === '/nginx-health'
+}));
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

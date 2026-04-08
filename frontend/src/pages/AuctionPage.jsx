@@ -180,6 +180,24 @@ export default function AuctionPage({ user }) {
               {auction.itemName}
             </h1>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-3)' }}>Auction ID: </span>
+              <code style={{ fontSize: '13px', color: 'var(--text-2)', background: 'var(--bg-raised)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                {auction.auctionId}
+              </code>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(auction.auctionId);
+                  toast.success('Auction ID copied to clipboard', { icon: '📋' });
+                }}
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '2px 6px', height: 'auto', minHeight: 'auto', fontSize: '12px' }}
+                title="Copy Auction ID"
+              >
+                Copy
+              </button>
+            </div>
+
             {auction.description && (
               <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.7 }}>
                 {auction.description}

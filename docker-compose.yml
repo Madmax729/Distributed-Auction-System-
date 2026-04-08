@@ -25,14 +25,13 @@
 #   2. docker compose up --build
 # ============================================================
 
-version: '3.8'
-
 networks:
   auction-network:
     driver: bridge
 
 volumes:
   uploads-data:
+
 
 services:
 
@@ -46,7 +45,7 @@ services:
     networks:
       - auction-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -80,7 +79,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
       interval: 15s
       timeout: 5s
       retries: 4
@@ -114,7 +113,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3002/health" ]
       interval: 15s
       timeout: 5s
       retries: 4
@@ -148,7 +147,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3003/health" ]
       interval: 15s
       timeout: 5s
       retries: 4
@@ -182,7 +181,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3004/health" ]
       interval: 15s
       timeout: 5s
       retries: 4
@@ -212,10 +211,13 @@ services:
     restart: unless-stopped
     environment:
       NGROK_AUTHTOKEN: "3C1HrPpstatP6SyHlYZmE1MqNRB_6zFKd5aekYQAeaJH7Ec9L"
-    command: "http nginx:80 --log stdout"
+    # command: "http nginx:80 --log stdout"
+    command: "http host.docker.internal:5173 --log=stdout --log-format=logfmt"
     ports:
       - "4040:4040"
     networks:
       - auction-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - nginx

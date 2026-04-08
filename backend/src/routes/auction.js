@@ -64,6 +64,7 @@ router.get('/', async (req, res) => {
     if (category && category !== 'ALL') query.category = category;
     if (search) {
       query.$or = [
+        { auctionId: search },
         { itemName:    { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
       ];
@@ -135,7 +136,7 @@ router.post('/', async (req, res) => {
   try {
     const {
       itemName, description, startingPrice, endTime,
-      userId, userName, imagePath, category,
+      userId, userName, imagePath, category, auctionId,
     } = req.body;
 
     if (!itemName || startingPrice === undefined || !endTime || !userId) {
@@ -163,7 +164,7 @@ router.post('/', async (req, res) => {
     );
 
     const auction = new Auction({
-      auctionId:        uuidv4(),
+      auctionId:        auctionId || uuidv4(),
       itemName:         itemName.trim(),
       description:      description?.trim() || '',
       category:         category || 'Other',

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 // When running `npm run dev`, proxy API calls to the backend directly.
 // Change BACKEND_URL to http://localhost:80 if running via Docker+NGINX.
-const BACKEND_URL = process.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const BACKEND_URL = process.env.VITE_BACKEND_URL || 'http://localhost:80';
 
 export default defineConfig({
   plugins: [react()],
@@ -11,7 +11,12 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0',
     // Allow connections from ngrok and other external hosts
-    allowedHosts: 'all',
+    allowedHosts: [
+      'unbeamed-subglobular-averie.ngrok-free.dev',
+      '.ngrok-free.dev',
+      '.ngrok.app',
+      '.ngrok-free.app'
+    ],
     proxy: {
       '/api': {
         target: BACKEND_URL,

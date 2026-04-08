@@ -100,7 +100,12 @@ export default function main(data) {
   }
 
   const auctionData = JSON.parse(joinRes.body);
-  let currentBid = auctionData.auction?.currentHighestBid || 100;
+  // let currentBid = auctionData.auction?.currentHighestBid || 100;
+  let currentBid = 100;
+
+  if (auctionData.auction && auctionData.auction.currentHighestBid) {
+    currentBid = auctionData.auction.currentHighestBid;
+  }
 
   // Step 2: Place multiple bids
   const bidCount = Math.floor(Math.random() * 5) + 3; // 3-7 bids per VU
@@ -143,7 +148,7 @@ export default function main(data) {
           if (body.currentHighestBid) {
             currentBid = body.currentHighestBid;
           }
-        } catch (e) {}
+        } catch (e) { }
         errorRate.add(0); // Not a real error
         break;
 
