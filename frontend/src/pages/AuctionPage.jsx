@@ -208,7 +208,7 @@ export default function AuctionPage({ user }) {
             {auction.imagePath && (
               <div style={{
                 height: 240, borderRadius: 10,
-                background: `url(${auction.imagePath}) center/cover`,
+                background: `url(${auction.imagePath}) center/contain no-repeat`,
                 marginBottom: 22,
                 border: '1px solid var(--border)',
               }} />

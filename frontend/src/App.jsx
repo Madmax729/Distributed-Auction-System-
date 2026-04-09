@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage';
 import AuctionPage from './pages/AuctionPage';
 import CreateAuctionPage from './pages/CreateAuctionPage';
 import AdminPage from './pages/AdminPage';
+import LoadTestPage from './pages/LoadTestPage';
 import UserSetupModal from './components/UserSetupModal';
 import { getSocket } from './services/socket';
 
@@ -57,6 +58,7 @@ function App() {
           <Route path="/"                    element={<HomePage user={user} />} />
           <Route path="/auction/:auctionId"  element={<AuctionPage user={user} />} />
           <Route path="/create"              element={<CreateAuctionPage user={user} />} />
+          <Route path="/loadtest"            element={<LoadTestPage user={user} />} />
           <Route path="/admin"               element={<AdminPage />} />
           <Route path="*"                    element={<Navigate to="/" replace />} />
         </Routes>

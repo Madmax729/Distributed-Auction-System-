@@ -153,23 +153,11 @@ export default function AdminPage() {
   };
 
   const fetchServerStatuses = async () => {
-    const statuses = {};
-    await Promise.allSettled(
-      SERVER_IDS.map(async (id) => {
-        try {
-          const res = await axios.get('/health', { timeout: 2000, headers: { 'x-target-server': id } });
-          statuses[id] = { online: true, ...res.data };
-        } catch {
-          statuses[id] = { online: false, serverId: id };
-        }
-      })
-    );
     try {
       const res = await serverAPI.getInfo();
       setSystemInfo(res.data);
-      statuses[parseInt(res.data.serverId)] = { online: true, ...res.data };
+      // Let the socket.io 'server-status' event populate the rest of the nodes naturally
     } catch {}
-    setServerStatuses(statuses);
   };
 
   const startLoadTest = async () => {

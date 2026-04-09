@@ -21,8 +21,9 @@ const { getClockForSend } = require('./lamportClock');
  *
  * @param {Object} bidData - The full bid document
  * @param {Object} auctionData - Updated auction state
+ * @param {number} handledBy - The server ID that originally received the HTTP request
  */
-const replicateBid = async (bidData, auctionData) => {
+const replicateBid = async (bidData, auctionData, handledBy) => {
   const peers = getPeerServers();
   const timestamp = getClockForSend();
 
@@ -34,6 +35,7 @@ const replicateBid = async (bidData, auctionData) => {
   const replicationPayload = {
     bid: bidData,
     auction: auctionData,
+    handledBy,
     sourceLeader: parseInt(process.env.SERVER_ID || '1'),
     lamportTimestamp: timestamp,
   };

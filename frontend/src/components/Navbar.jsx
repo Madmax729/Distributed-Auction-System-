@@ -61,6 +61,7 @@ export default function Navbar({ user, onChangeUser, theme, toggleTheme }) {
         <div className={`${styles.links} ${menuOpen ? styles.linksOpen : ''}`}>
           <Link to="/"       className={`${styles.link} ${isActive('/')       ? styles.linkActive : ''}`}>Auctions</Link>
           <Link to="/create" className={`${styles.link} ${isActive('/create') ? styles.linkActive : ''}`}>Create</Link>
+          <Link to="/loadtest" className={`${styles.link} ${isActive('/loadtest') ? styles.linkActive : ''}`}>Load Test</Link>
           <Link to="/admin"  className={`${styles.link} ${isActive('/admin')  ? styles.linkActive : ''}`}>Admin</Link>
         </div>
 

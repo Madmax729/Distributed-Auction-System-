@@ -62,37 +62,59 @@ router.post('/', bidRateLimiter, async (req, res) => {
       }
     }
 
-    // ─── Leader processes the bid ─────────────────────────────
-    const auction = await Auction.findOne({ auctionId });
-    if (!auction) return res.status(404).json({ error: 'Auction not found' });
-    if (auction.status === 'ENDED') {
-      return res.status(400).json({ error: 'Auction has ended' });
-    }
-
-    // Check if auction time has expired
-    if (new Date() > auction.endTime) {
-      // Auto-end auction
-      auction.status = 'ENDED';
-      await auction.save();
-      await invalidateCache(`auction:${auctionId}`);
-      await invalidateCache('auctions:list:*');
-      req.io.emit('auction-ended', {
-        auctionId,
-        winner: auction.highestBidder,
-        winnerName: auction.highestBidderName,
-        winningBid: auction.currentHighestBid,
-      });
-      return res.status(400).json({ error: 'Auction time has expired' });
-    }
-
-    // Validate bid amount
     const bidAmount = parseFloat(amount);
-    if (bidAmount <= auction.currentHighestBid) {
-      return res.status(400).json({
-        error: 'Bid too low',
-        message: `Bid must be higher than current highest bid of $${auction.currentHighestBid}`,
-        currentHighestBid: auction.currentHighestBid,
-      });
+    const lamportTimestamp = getClockForSend();
+
+    // ─── Leader processes the bid Atomically ───────────────────
+    const updatedAuction = await Auction.findOneAndUpdate(
+      {
+        auctionId,
+        status: 'ONGOING',
+        currentHighestBid: { $lt: bidAmount }
+      },
+      {
+        $set: {
+          currentHighestBid: bidAmount,
+          highestBidder: userId,
+          highestBidderName: userName || 'Anonymous',
+          lastLamportTimestamp: lamportTimestamp
+        },
+        $inc: { bidCount: 1 }
+      },
+      { new: true }
+    );
+
+    let auction = updatedAuction;
+
+    // If update failed, check the exact reason (ended, too low, etc.)
+    if (!auction) {
+      const currentAuction = await Auction.findOne({ auctionId });
+      if (!currentAuction) return res.status(404).json({ error: 'Auction not found' });
+      if (currentAuction.status === 'ENDED') {
+        return res.status(400).json({ error: 'Auction has ended' });
+      }
+
+      if (new Date() > currentAuction.endTime) {
+        currentAuction.status = 'ENDED';
+        await currentAuction.save();
+        await invalidateCache(`auction:${auctionId}`);
+        await invalidateCache('auctions:list:*');
+        req.io.emit('auction-ended', {
+          auctionId,
+          winner: currentAuction.highestBidder,
+          winnerName: currentAuction.highestBidderName,
+          winningBid: currentAuction.currentHighestBid,
+        });
+        return res.status(400).json({ error: 'Auction time has expired' });
+      }
+
+      if (bidAmount <= currentAuction.currentHighestBid) {
+        return res.status(400).json({
+          error: 'Bid too low',
+          message: `Bid must be higher than current highest bid of $${currentAuction.currentHighestBid}`,
+          currentHighestBid: currentAuction.currentHighestBid,
+        });
+      }
     }
 
     // Ensure user exists
@@ -101,9 +123,6 @@ router.post('/', bidRateLimiter, async (req, res) => {
       { userId, name: userName || 'Anonymous' },
       { upsert: true }
     );
-
-    // Assign Lamport timestamp (increment on send)
-    const lamportTimestamp = getClockForSend();
 
     // Create bid record
     const bid = new Bid({
@@ -117,14 +136,6 @@ router.post('/', bidRateLimiter, async (req, res) => {
     });
 
     await bid.save();
-
-    // Update auction state (atomic increment for bidCount)
-    auction.currentHighestBid = bidAmount;
-    auction.highestBidder = userId;
-    auction.highestBidderName = userName || 'Anonymous';
-    auction.lastLamportTimestamp = lamportTimestamp;
-    auction.bidCount = (auction.bidCount || 0) + 1;
-    await auction.save();
 
     console.log(
       `[Bid][Leader Server ${SERVER_ID}] Accepted: $${bidAmount} by ${userId} ` +
@@ -140,6 +151,9 @@ router.post('/', bidRateLimiter, async (req, res) => {
     await invalidateCache('auctions:list:*');
     await invalidateCache(`auction:stats:${auctionId}`);
 
+    const forwardedFrom = req.headers['x-forwarded-from'];
+    const handledBy = forwardedFrom ? parseInt(forwardedFrom.replace('server', '')) : parseInt(SERVER_ID);
+
     // Broadcast real-time bid update to all clients
     req.io.emit('new-bid', {
       auctionId,
@@ -149,11 +163,12 @@ router.post('/', bidRateLimiter, async (req, res) => {
       highestBidderName: userName,
       lamportTimestamp,
       serverId: SERVER_ID,
+      handledBy,
       bidCount: auction.bidCount,
     });
 
     // Replicate to followers asynchronously (don't block response)
-    replicateBid(bid.toObject(), auction.toObject()).catch(err =>
+    replicateBid(bid.toObject(), auction.toObject(), handledBy).catch(err =>
       console.error('[Bid] Replication error:', err.message)
     );
 

@@ -320,7 +320,7 @@ export default function CreateAuctionPage({ user }) {
                 <img
                   src={imagePreview} alt="Preview"
                   style={{
-                    width: '100%', maxHeight: 200, objectFit: 'cover',
+                    width: '100%', maxHeight: 200, objectFit: 'contain',
                     borderRadius: 'var(--r-md)', display: 'block',
                     border: '1px solid var(--border)',
                   }}

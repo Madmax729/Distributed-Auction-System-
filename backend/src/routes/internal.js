@@ -31,7 +31,7 @@ router.get('/heartbeat', (req, res) => {
 // Receives replicated bid from leader and applies it locally
 router.post('/replicate-bid', async (req, res) => {
   try {
-    const { bid, auction, sourceLeader, lamportTimestamp } = req.body;
+    const { bid, auction, sourceLeader, lamportTimestamp, handledBy } = req.body;
 
     if (!bid || !auction) {
       return res.status(400).json({ error: 'bid and auction data required' });
@@ -56,6 +56,7 @@ router.post('/replicate-bid', async (req, res) => {
           highestBidderName: auction.highestBidderName,
           lamportTimestamp,
           serverId: SERVER_ID,
+          handledBy: handledBy || SERVER_ID,
           replicated: true,
         });
       }
